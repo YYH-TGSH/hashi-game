@@ -8,25 +8,18 @@
   <meta name="apple-mobile-web-app-title" content="數橋">
   <title>數橋</title>
   
-  <!-- 網頁圖示與加入主畫面的 App Icon -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ffcc00%22 rx=%2220%22/><text y=%2272%22 x=%2216%22 font-size=%2265%22>🌉</text></svg>">
   <link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ffcc00%22/><text y=%2272%22 x=%2216%22 font-size=%2265%22>🌉</text></svg>">
   
-  <!-- 載入 Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- 載入 React 核心庫 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  <!-- 載入 Babel 編譯器 -->
   <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-
-  <!-- 🌟 載入 PeerJS (免設定的點對點連線套件) 🌟 -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
   <style>
-    /* 防止網頁下拉更新與邊緣回彈 */
     body {
       overscroll-behavior-y: none;
       background-color: #fdf5e6; 
@@ -34,7 +27,6 @@
       background-size: 12px 12px; 
       margin: 0; padding: 0;
     }
-    /* 動畫與自訂捲軸 */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-5px); }
       to { opacity: 1; transform: translateY(0); }
@@ -77,10 +69,8 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // === 精選 8 種高對比玩家顏色 ===
     const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
-    // === 關卡設定 ===
     const LEVELS = [
       { id: 1, name: "🎲 隨機 (5x5 幼幼班)", isRandom: true, width: 5, height: 5 },
       { id: 2, name: "🎲 隨機 (10x10 標準)", isRandom: true, width: 10, height: 10 },
@@ -89,7 +79,6 @@
       { id: 5, name: "🎲 隨機 (20x20 史詩)", isRandom: true, width: 20, height: 20 }
     ];
 
-    // 生成隨機地圖 (支援不同長寬比)
     const generateRandomHashi = (levelDef) => {
       const width = levelDef.width;
       const height = levelDef.height;
@@ -112,7 +101,7 @@
       
       if (area === 25) targetIslandCount = 7;
       else if (area === 100) targetIslandCount = 22;
-      else if (area === 200) targetIslandCount = 45; // 10x20
+      else if (area === 200) targetIslandCount = 45; 
       else if (area === 225) targetIslandCount = 45;
       else if (area === 400) targetIslandCount = 80;
 
@@ -180,14 +169,16 @@
         );
 
         if (existingBridge) {
-           if (existingBridge.count < 2) existingBridge.count = 2;
+           if (existingBridge.count === 1 && Math.random() < 0.25) {
+               existingBridge.count = 2;
+           }
            continue;
         }
 
         let newBridge = {
           from: source.id,
           to: targetIslandObj.id,
-          count: Math.floor(Math.random() * 2) + 1,
+          count: Math.random() < 0.55 ? 1 : 2, 
           type: dir[0] !== 0 ? 'h' : 'v'
         };
         solutionBridges.push(newBridge);
@@ -199,12 +190,58 @@
         }
       }
 
+      // 初步結算所有島嶼的數字
       solutionBridges.forEach(b => {
         let fromNode = islands.find(i => i.id === b.from);
         let toNode = islands.find(i => i.id === b.to);
         fromNode.req += b.count;
         toNode.req += b.count;
       });
+
+      // --- 🎯 偶數限制優化：強制保證偶數島嶼數量不高於 50% ---
+      let evenIslands = islands.filter(i => i.req % 2 === 0);
+      let adjustAttempts = 0;
+      const maxEvenCount = Math.floor(islands.length / 2);
+      
+      while (evenIslands.length > maxEvenCount && adjustAttempts < 500) {
+        adjustAttempts++;
+        
+        // 優先找一條連接「兩個偶數島」的橋
+        let candidateBridges = solutionBridges.filter(b => {
+          let fromNode = islands.find(i => i.id === b.from);
+          let toNode = islands.find(i => i.id === b.to);
+          return fromNode.req % 2 === 0 && toNode.req % 2 === 0;
+        });
+
+        let targetBridge = null;
+        if (candidateBridges.length > 0) {
+           targetBridge = candidateBridges[Math.floor(Math.random() * candidateBridges.length)];
+        } else {
+           // 若找不到，則找至少連接「一個偶數島」的橋來打亂狀態
+           candidateBridges = solutionBridges.filter(b => {
+             let fromNode = islands.find(i => i.id === b.from);
+             let toNode = islands.find(i => i.id === b.to);
+             return fromNode.req % 2 === 0 || toNode.req % 2 === 0;
+           });
+           if (candidateBridges.length > 0) {
+             targetBridge = candidateBridges[Math.floor(Math.random() * candidateBridges.length)];
+           }
+        }
+
+        if (targetBridge) {
+          // 如果原本是 1 條橋就變 2 條，如果是 2 條橋就變 1 條
+          let diff = targetBridge.count === 1 ? 1 : -1;
+          targetBridge.count += diff;
+          let fromNode = islands.find(i => i.id === targetBridge.from);
+          let toNode = islands.find(i => i.id === targetBridge.to);
+          fromNode.req += diff;
+          toNode.req += diff;
+        }
+
+        // 重新檢測偶數島的數量
+        evenIslands = islands.filter(i => i.req % 2 === 0);
+      }
+      // -----------------------------------------------------------
 
       return {
         id: levelDef.id,
@@ -245,7 +282,6 @@
       return pb;
     };
 
-    // 格式化秒數為 mm:ss
     const formatTime = (secs) => {
       const m = String(Math.floor(secs / 60)).padStart(2, '0');
       const s = String(secs % 60).padStart(2, '0');
@@ -266,15 +302,12 @@
       const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
       const [zoomLevel, setZoomLevel] = useState(1);
 
-      // Timer 狀態
       const [startTime, setStartTime] = useState(Date.now());
       const [elapsedTime, setElapsedTime] = useState(0);
 
-      // Save/Load Modal
       const [showSaveModal, setShowSaveModal] = useState(false);
       const [saveCode, setSaveCode] = useState("");
 
-      // PeerJS
       const [isMultiplayer, setIsMultiplayer] = useState(false);
       const [roomId, setRoomId] = useState("");
       const [isHost, setIsHost] = useState(false);
@@ -284,7 +317,6 @@
       const [tempPlayerName, setTempPlayerName] = useState("");
       const [playersList, setPlayersList] = useState([]); 
 
-      // Touch events refs for Canvas
       const zoomContainerRef = useRef(null);
       const lastPinchDist = useRef(null);
 
@@ -304,16 +336,14 @@
         stateRef.current = { bridges, levelId: currentLevelId, isMultiplayer, isHost, myPeerId, randomLevelData, showSolution, startTime };
       }, [bridges, currentLevelId, isMultiplayer, isHost, myPeerId, randomLevelData, showSolution, startTime]);
 
-      // 計時器邏輯
       useEffect(() => {
-        if (isWon) return; // 過關停止計時
+        if (isWon) return; 
         const timer = setInterval(() => {
           setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
         }, 1000);
         return () => clearInterval(timer);
       }, [startTime, isWon]);
 
-      // 監聽畫布的 Pinch-to-Zoom (手機兩指縮放)
       useEffect(() => {
         const el = zoomContainerRef.current;
         if (!el) return;
@@ -354,7 +384,7 @@
 
       const startMultiplayer = (roomCode, playerName) => {
         if (!roomCode || !playerName) return alert("請完整輸入房號與您的暱稱！");
-        const fullRoomId = 'hashi-game-ultimate-v2-' + roomCode; 
+        const fullRoomId = 'hashi-game-ultimate-v5-' + roomCode; 
         const peer = new Peer(fullRoomId);
 
         peer.on('open', (id) => {
@@ -392,7 +422,6 @@
                  broadcastToAll('SYNC_FULL_STATE', stateRef.current, conn.peer);
                }
                else if (msg.type === 'UPDATE_PLAYERS') {
-                 // 接收玩家顏色變更請求
                  playersRef.current = msg.data;
                  setPlayersList([...playersRef.current]);
                  broadcastToAll('SYNC_PLAYERS', playersRef.current);
@@ -723,16 +752,29 @@
       const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.3, 0.4));
       const handleZoomReset = () => setZoomLevel(1);
 
-      // 動態決定網格寬高
-      const gridWidth = currentLevel.width || 10;
-      const gridHeight = currentLevel.height || 10;
+      const maxGridX = Math.max(...currentLevel.islands.map(i => i.x), 0); 
+      const maxGridY = Math.max(...currentLevel.islands.map(i => i.y), 0);
+      const gridWidth = currentLevel.width || (maxGridX + 1);
+      const gridHeight = currentLevel.height || (maxGridY + 1);
+
       const SCALE = 65;
       const PADDING = 85;
       const ISLAND_RADIUS = 20;
-      const svgWidthBase = gridWidth * SCALE + PADDING * 2;
-      const svgHeightBase = gridHeight * SCALE + PADDING * 2;
 
-      // 繪製紅色虛線解答
+      const svgWidthBase = (gridWidth - 1) * SCALE + PADDING * 2;
+      const svgHeightBase = (gridHeight - 1) * SCALE + PADDING * 2;
+
+      const renderGridLines = () => {
+        const lines = [];
+        for(let i=0; i<gridWidth; i++) {
+          lines.push(<line key={`gv_${i}`} x1={i * SCALE + PADDING} y1={PADDING} x2={i * SCALE + PADDING} y2={(gridHeight - 1) * SCALE + PADDING} stroke="#94a3b8" strokeWidth="2" strokeOpacity="0.8" />);
+        }
+        for(let i=0; i<gridHeight; i++) {
+          lines.push(<line key={`gh_${i}`} x1={PADDING} y1={i * SCALE + PADDING} x2={(gridWidth - 1) * SCALE + PADDING} y2={i * SCALE + PADDING} stroke="#94a3b8" strokeWidth="2" strokeOpacity="0.8" />);
+        }
+        return <g className="pointer-events-none">{lines}</g>;
+      };
+
       const renderSolutionBridge = (bridge) => {
         const islandsMap = {};
         currentLevel.islands.forEach(i => islandsMap[i.id] = i);
@@ -748,16 +790,16 @@
           <g key={`sol_${bridge.from}_${bridge.to}`} className="pointer-events-none opacity-60">
             {bridge.count === 1 && ( <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth="8" strokeLinecap="round" className="solution-line" /> )}
             {bridge.count === 2 && bridge.type === 'h' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1} y1={y1 - 6} x2={x2} y2={y2 - 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
                 <line x1={x1} y1={y1 + 6} x2={x2} y2={y2 + 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </React.Fragment>
+              </g>
             )}
             {bridge.count === 2 && bridge.type === 'v' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1 - 6} y1={y1} x2={x2 - 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
                 <line x1={x1 + 6} y1={y1} x2={x2 + 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </React.Fragment>
+              </g>
             )}
           </g>
         );
@@ -792,16 +834,16 @@
             
             {bridge.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />}
             {bridge.count === 2 && bridge.type === 'h' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1} y1={y1 - 5} x2={x2} y2={y2 - 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
                 <line x1={x1} y1={y1 + 5} x2={x2} y2={y2 + 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </React.Fragment>
+              </g>
             )}
             {bridge.count === 2 && bridge.type === 'v' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1 - 5} y1={y1} x2={x2 - 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
                 <line x1={x1 + 5} y1={y1} x2={x2 + 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </React.Fragment>
+              </g>
             )}
           </g>
         );
@@ -834,9 +876,8 @@
         <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans overflow-hidden">
           <div className="w-full max-w-[1200px] bg-[#fffaf0] rounded-xl border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,1)] flex flex-col h-full relative z-10">
             
-            {/* 上方控制面板 */}
-            <div className={`bg-[#ffcc00] border-b-4 border-slate-800 text-slate-900 shrink-0 z-20 transition-all duration-300 ease-in-out ${isHeaderCollapsed ? 'p-2 flex flex-wrap gap-2 items-center justify-between' : 'p-3 md:p-5 flex flex-col gap-3'}`}>
-              <div className="flex justify-between items-center w-full">
+            <div className={`bg-[#ffcc00] border-b-4 border-slate-800 text-slate-900 shrink-0 z-20 transition-all duration-300 ease-in-out ${isHeaderCollapsed ? 'p-2 flex flex-col md:flex-row gap-2 items-center justify-between' : 'p-3 md:p-5 flex flex-col gap-3'}`}>
+              <div className="flex justify-between items-center w-full flex-wrap gap-2">
                 <div className="flex items-center gap-3 flex-wrap">
                   {!isHeaderCollapsed ? (
                     <h1 className="text-2xl md:text-3xl font-black tracking-tight uppercase">🌉 數橋</h1>
@@ -844,7 +885,6 @@
                     <h1 className="text-lg font-black tracking-tight uppercase px-2">🌉 數橋</h1>
                   )}
                   
-                  {/* 計時器 */}
                   <div className="flex items-center gap-1 bg-slate-800 text-white px-2 md:px-3 py-1 rounded-lg font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.3)] text-sm md:text-base">
                      ⏱ {formatTime(elapsedTime)}
                   </div>
@@ -857,40 +897,42 @@
                 </div>
 
                 {isHeaderCollapsed && (
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-end">
                     <select 
                       disabled={isMultiplayer && !isHost}
                       value={currentLevelId} 
                       onChange={(e) => handleLevelChange(Number(e.target.value))} 
-                      className={`px-2 py-1 rounded-md border-2 border-slate-800 font-bold bg-white text-slate-800 text-sm outline-none shadow-[2px_2px_0px_rgba(30,41,59,1)] ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                      className={`px-2 py-1 rounded-md border-2 border-slate-800 font-bold bg-white text-slate-800 text-sm outline-none shadow-[2px_2px_0px_rgba(30,41,59,1)] max-w-[120px] sm:max-w-none ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
                       {LEVELS.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
                     </select>
-                    {(!isMultiplayer || isHost) && <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-red-600">🔄 重置</button>}
+
+                    <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 py-1 bg-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100">↩️</button>
+                    {(!isMultiplayer || isHost) && <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-red-600">🔄</button>}
                     <button onClick={() => setShowSaveModal(true)} className="px-2 py-1 bg-blue-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-blue-600">💾</button>
-                    <button onClick={() => setIsHeaderCollapsed(false)} className="ml-1 bg-slate-800 text-white px-2 py-1 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700">🔽 展開</button>
+                    <button onClick={() => setIsHeaderCollapsed(false)} className="ml-auto bg-slate-800 text-white px-2 py-1 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700">🔽 展開</button>
                   </div>
                 )}
                 
                 {!isHeaderCollapsed && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap justify-end mt-2 md:mt-0 w-full md:w-auto">
                     <button 
                       onClick={() => setShowSaveModal(true)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white border-2 border-slate-800 px-3 py-1.5 rounded-md font-bold text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1 hidden md:flex"
+                      className="bg-blue-500 hover:bg-blue-600 text-white border-2 border-slate-800 px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1 hidden md:flex"
                     >
-                      💾 存檔/讀檔
+                      💾 <span className="hidden md:inline">存檔/讀檔</span><span className="md:hidden">存檔</span>
                     </button>
                     <button 
                       onClick={() => isMultiplayer ? disconnectMultiplayer() : setShowJoinModal(true)}
-                      className={`${isMultiplayer ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white border-2 border-slate-800 px-3 py-1.5 rounded-md font-bold text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1`}
+                      className={`${isMultiplayer ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white border-2 border-slate-800 px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1`}
                     >
-                      {isMultiplayer ? "🔌 斷開連線" : "🌐 多人連線"}
+                      {isMultiplayer ? "🔌 斷開" : "🌐 連線"}
                     </button>
                     <button 
                       onClick={() => setIsHeaderCollapsed(true)}
-                      className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-md font-bold text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1"
+                      className="bg-slate-800 hover:bg-slate-700 text-white px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1"
                     >
-                      🔼 縮小面板
+                      🔼 <span className="hidden md:inline">縮小面板</span><span className="md:hidden">縮小</span>
                     </button>
                   </div>
                 )}
@@ -898,7 +940,7 @@
               
               {!isHeaderCollapsed && (
                 <React.Fragment>
-                  <div className="bg-white border-2 border-slate-800 rounded-lg p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] animate-fadeIn flex flex-col md:flex-row gap-4">
+                  <div className="bg-white border-2 border-slate-800 rounded-lg p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] flex flex-col md:flex-row gap-4 mb-1">
                     <div className="flex-1">
                       <h3 className="text-base md:text-lg font-black mb-1 md:mb-2 border-b-4 border-[#ffcc00] inline-block pb-1">📜 遊戲四大規則</h3>
                       <ol className="list-decimal list-outside ml-5 space-y-1 md:space-y-1.5 text-xs md:text-sm leading-relaxed font-bold">
@@ -920,50 +962,46 @@
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 items-center mt-1">
-                    <span className="font-bold text-slate-800 mr-1 text-sm md:text-base">選擇：</span>
+                  <div className="flex flex-wrap gap-2 items-center mt-2 w-full">
+                    <span className="font-bold text-slate-800 mr-1 text-sm md:text-base hidden md:inline">選擇：</span>
                     <select
                       disabled={isMultiplayer && !isHost}
                       value={currentLevelId}
                       onChange={(e) => handleLevelChange(Number(e.target.value))}
-                      className={`px-3 py-1.5 rounded-md border-2 border-slate-800 font-bold bg-white text-slate-800 text-sm md:text-base outline-none shadow-[3px_3px_0px_rgba(30,41,59,1)] ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                      className={`px-2 py-1.5 rounded-md border-2 border-slate-800 font-bold bg-white text-slate-800 text-xs md:text-base outline-none shadow-[3px_3px_0px_rgba(30,41,59,1)] max-w-[140px] sm:max-w-none ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
                       {LEVELS.map(level => (
                         <option key={level.id} value={level.id}>{level.name}</option>
                       ))}
                     </select>
-                    {isMultiplayer && !isHost && <span className="text-xs font-bold text-slate-700 bg-white/50 px-2 py-1 rounded hidden md:inline">(僅房主可切換關卡)</span>}
+                    {isMultiplayer && !isHost && <span className="text-xs font-bold text-slate-700 bg-white/50 px-1 py-1 rounded">(僅房主可切換)</span>}
                     
-                    <div className="ml-auto flex gap-2">
+                    <div className="ml-auto flex gap-2 flex-wrap justify-end">
                       {!isWon && !showSolution && (
-                        <button onClick={handleShowSolution} className="px-3 md:px-4 py-1.5 bg-yellow-400 text-slate-900 border-2 border-slate-800 rounded-md font-bold text-sm md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-yellow-500 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                          💡 顯示解答
+                        <button onClick={handleShowSolution} className="px-2 md:px-4 py-1.5 bg-yellow-400 text-slate-900 border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-yellow-500 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                          💡 解答
                         </button>
                       )}
                       
-                      {/* 所有人都可以按換新題目 */}
-                      <button onClick={handleRegenerateRandom} className="px-3 md:px-4 py-1.5 bg-blue-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-blue-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                        🎲 換新題目
+                      <button onClick={handleRegenerateRandom} className="px-2 md:px-4 py-1.5 bg-blue-500 text-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-blue-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                        🎲 新題
                       </button>
 
-                      {!isMultiplayer && (
-                        <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-3 md:px-4 py-1.5 bg-white border-2 border-slate-800 rounded-md font-bold text-sm md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 disabled:opacity-50 disabled:shadow-none active:translate-y-1 active:shadow-none transition-all items-center gap-1 hidden md:flex">
-                          ↩️ 復原
+                      <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 md:px-4 py-1.5 bg-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                        ↩️ 復原
+                      </button>
+                      
+                      {(!isMultiplayer || isHost) && (
+                        <button onClick={handleReset} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-red-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                          🔄 重置
                         </button>
                       )}
-                      
-                      {(!isMultiplayer || isHost) ? (
-                        <button onClick={handleReset} className="px-3 md:px-4 py-1.5 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-red-600 active:translate-y-1 active:shadow-none transition-all hidden md:block">
-                          🔄 重置全場
-                        </button>
-                      ) : null}
                     </div>
                   </div>
                 </React.Fragment>
               )}
             </div>
 
-            {/* 線上玩家名單 */}
             {isMultiplayer && (
               <div className="px-4 py-2 bg-white border-b-4 border-slate-800 flex flex-wrap gap-2 items-center z-10 shadow-sm shrink-0">
                 <span className="font-black text-slate-800 text-sm">👥 線上玩家：</span>
@@ -973,7 +1011,7 @@
                     onClick={() => handlePlayerColorChange(p.id)}
                     title="點擊更換顏色"
                     className="px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-slate-100 text-slate-800 flex items-center shadow-sm cursor-pointer hover:bg-slate-200 transition-colors" 
-                    style={{ borderLeftColor: p.color, borderLeftWidth: '6px' }}
+                    style={{ borderLeftColor: p.id === myPeerId ? '#1e293b' : p.color, borderLeftWidth: '6px' }}
                   >
                     {p.name} {p.isHost && '👑'} {p.id === myPeerId && '(你)'}
                   </span>
@@ -981,7 +1019,6 @@
               </div>
             )}
 
-            {/* 提示訊息區 */}
             {!isHeaderCollapsed && (
               <div className="h-8 shrink-0 flex items-center justify-center bg-slate-800 text-white border-b-4 border-slate-800 z-10 font-bold tracking-wide">
                 {message && <span className="text-yellow-300 animate-pulse">{message}</span>}
@@ -998,21 +1035,14 @@
                 <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 border-2 border-slate-800 rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
               </div>
 
-              {/* 綁定觸控事件的滾動區 */}
               <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative">
                 <div className="flex justify-center items-center min-w-max min-h-max m-auto pb-24 pr-20">
                   <svg 
                     viewBox={`0 0 ${svgWidthBase} ${svgHeightBase}`} 
                     className="bg-transparent transition-transform duration-100 ease-out origin-center"
-                    style={{ width: `${svgWidthBase}px`, height: `${svgHeightBase}px`, transform: `scale(${zoomLevel})` }}
+                    style={{ width: `${svgWidthBase * zoomLevel}px`, height: `${svgHeightBase * zoomLevel}px`, touchAction: 'manipulation' }}
                   >
-                    <defs>
-                      <pattern id="grid" width={SCALE} height={SCALE} patternUnits="userSpaceOnUse">
-                        <path d={`M ${SCALE} 0 L 0 0 0 ${SCALE}`} fill="none" stroke="#94a3b8" strokeWidth="2" strokeOpacity="0.5"/>
-                      </pattern>
-                    </defs>
-                    <rect width="100%" height="100%" fill="url(#grid)" transform={`translate(${PADDING}, ${PADDING})`} className="pointer-events-none" />
-                    
+                    {renderGridLines()}
                     {showSolution && currentLevel.solution && currentLevel.solution.map(renderSolutionBridge)}
                     {bridges.map(renderBridge)}
                     {currentLevel.islands.map(renderIsland)}
@@ -1023,7 +1053,6 @@
             
           </div>
           
-          {/* 過關選單 */}
           {isWon && !hideVictoryModal && (
             <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60]">
               <div className="pointer-events-auto bg-white rounded-2xl p-5 md:p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,1)] text-center min-w-[280px] md:min-w-[320px] animate-popUp relative">
