@@ -43,6 +43,13 @@
     .animate-popUp {
       animation: popUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
+    @keyframes slideUpFade {
+      0% { transform: translate(-50%, 20px); opacity: 0; }
+      100% { transform: translate(-50%, 0); opacity: 1; }
+    }
+    .animate-slideUpFade {
+      animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
     .custom-scrollbar::-webkit-scrollbar {
       width: 12px; height: 12px;
     }
@@ -291,6 +298,7 @@
       const [history, setHistory] = useState([]); 
       const [isWon, setIsWon] = useState(false);
       const [message, setMessage] = useState("");
+      const [toastMsg, setToastMsg] = useState("");
       const [hideVictoryModal, setHideVictoryModal] = useState(false);
       const [showSolution, setShowSolution] = useState(false); 
       
@@ -339,7 +347,6 @@
         return () => clearInterval(timer);
       }, [startTime, isWon, screen]);
 
-      // 每次打開存檔讀檔介面時，自動清空輸入框
       useEffect(() => {
         if (showSaveModal) {
           setSaveCode("");
@@ -568,6 +575,10 @@
         setMessage(msg); setTimeout(() => setMessage(""), 3000);
       };
 
+      const showToast = (msg) => {
+        setToastMsg(msg); setTimeout(() => setToastMsg(""), 3000);
+      };
+
       const isCrossing = (targetBridge, currentBridges) => {
         const islandsMap = {};
         currentLevel.islands.forEach(i => islandsMap[i.id] = i);
@@ -732,14 +743,13 @@
         const code = btoa(encodeURIComponent(JSON.stringify(saveData)));
         setSaveCode(code);
 
-        // 複製到剪貼簿機制
         const textArea = document.createElement("textarea");
         textArea.value = code;
         document.body.appendChild(textArea);
         textArea.select();
         try {
           document.execCommand('copy');
-          alert("✅ 代碼已產生並自動複製到剪貼簿！\n您可以直接貼上至筆記本或通訊軟體保存。");
+          showToast("✅ 已複製到剪貼簿！");
         } catch (err) {
           console.error('複製失敗', err);
         }
@@ -748,12 +758,19 @@
 
       const handleQuickPaste = async () => {
         try {
-          const text = await navigator.clipboard.readText();
-          if(text) {
-             setSaveCode(text);
+          if (navigator.clipboard && navigator.clipboard.readText) {
+             const text = await navigator.clipboard.readText();
+             if(text) {
+                setSaveCode(text);
+                showToast("✅ 貼上成功！");
+             }
+          } else {
+             throw new Error("Clipboard API not supported");
           }
         } catch (err) {
-          alert("無法讀取剪貼簿，請長按輸入框或使用 Ctrl+V 進行手動貼上！");
+          const ta = document.getElementById("saveCodeTextarea");
+          if (ta) ta.focus();
+          showToast("⚠️ 瀏覽器阻擋自動貼上，請長按或 Ctrl+V 手動貼上");
         }
       };
 
@@ -786,7 +803,7 @@
              if (isHost) broadcastToAll('SYNC_FULL_STATE', payload);
              else if (clientConnRef.current) clientConnRef.current.send({ type: 'NEW_RANDOM_LEVEL', data: payload });
           }
-          alert("讀取成功！進度已恢復。");
+          showToast("✅ 讀取成功！進度已恢復。");
         } catch(e) {
           alert("讀檔失敗，請確認代碼是否完整！");
         }
@@ -1213,10 +1230,11 @@
                 
                 <div className="mb-6">
                   <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mb-3 text-lg">
-                    產生進度代碼 (並自動複製)
+                    產生進度代碼
                   </button>
                   <div className="relative">
                     <textarea 
+                      id="saveCodeTextarea"
                       value={saveCode} 
                       onChange={(e) => setSaveCode(e.target.value)} 
                       placeholder="點擊上方生成，或是將舊代碼貼在此處" 
@@ -1237,6 +1255,13 @@
                   <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">載入代碼</button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* 全域浮動輕提示 (Toast) */}
+          {toastMsg && (
+            <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] animate-fadeIn whitespace-nowrap">
+              {toastMsg}
             </div>
           )}
           
