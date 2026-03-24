@@ -20,38 +20,40 @@
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
   <style>
+    /* 文青風 Dot Pattern 背景 */
     body {
       overscroll-behavior-y: none;
-      background-color: #fdf5e6; 
-      background-image: radial-gradient(#d3c5ab 2px, transparent 2px); 
-      background-size: 12px 12px; 
+      background-color: #f4f1ea; 
+      background-image: radial-gradient(#d1cabc 2px, transparent 2px); 
+      background-size: 16px 16px; 
       margin: 0; padding: 0;
+      font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Heiti TC', 'Microsoft JhengHei', sans-serif;
     }
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-5px); }
+      from { opacity: 0; transform: translateY(-10px); }
       to { opacity: 1; transform: translateY(0); }
     }
     .animate-fadeIn {
-      animation: fadeIn 0.3s ease-in forwards;
+      animation: fadeIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
     @keyframes popUp {
-      0% { transform: translateY(30px); opacity: 0; }
-      100% { transform: translateY(0); opacity: 1; }
+      0% { transform: translateY(30px) scale(0.95); opacity: 0; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
     }
     .animate-popUp {
-      animation: popUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      animation: popUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
     .custom-scrollbar::-webkit-scrollbar {
       width: 12px; height: 12px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
-      background: #f1f5f9; border-left: 2px solid #1e293b; border-top: 2px solid #1e293b;
+      background: #f4f1ea; border-left: 3px solid #2d2a26; border-top: 3px solid #2d2a26;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #cbd5e1; border: 2px solid #1e293b; border-radius: 6px;
+      background: #d1cabc; border: 3px solid #2d2a26; border-radius: 6px;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: #94a3b8;
+      background: #a8a296;
     }
     .solution-line {
       stroke-dasharray: 10 10;
@@ -197,14 +199,12 @@
         toNode.req += b.count;
       });
 
-      // --- 🎯 偶數限制優化：強制保證偶數島嶼數量不高於 50% ---
       let evenIslands = islands.filter(i => i.req % 2 === 0);
       let adjustAttempts = 0;
       const maxEvenCount = Math.floor(islands.length / 2);
       
       while (evenIslands.length > maxEvenCount && adjustAttempts < 500) {
         adjustAttempts++;
-        
         let candidateBridges = solutionBridges.filter(b => {
           let fromNode = islands.find(i => i.id === b.from);
           let toNode = islands.find(i => i.id === b.to);
@@ -233,7 +233,6 @@
           fromNode.req += diff;
           toNode.req += diff;
         }
-
         evenIslands = islands.filter(i => i.req % 2 === 0);
       }
 
@@ -242,7 +241,7 @@
         name: levelDef.name,
         width: width,
         height: height,
-        description: "系統即時生成的隨機關卡！如果卡住了，可以點擊「顯示解答」。",
+        description: "系統隨機產生！如果卡住了，可以點擊「顯示解答」。",
         isRandom: true,
         islands: islands,
         solution: solutionBridges
@@ -283,6 +282,9 @@
     };
 
     function HashiGame() {
+      // ===== 畫面路由狀態 (首頁 / 準備連線 / 遊戲中) =====
+      const [screen, setScreen] = useState('home'); 
+
       const [currentLevelId, setCurrentLevelId] = useState(1);
       const [randomLevelData, setRandomLevelData] = useState(() => generateRandomHashi(LEVELS[0])); 
       const [bridges, setBridges] = useState(() => generateEmptyBridges(randomLevelData || LEVELS[0]));
@@ -306,7 +308,6 @@
       const [roomId, setRoomId] = useState("");
       const [isHost, setIsHost] = useState(false);
       const [myPeerId, setMyPeerId] = useState(null);
-      const [showJoinModal, setShowJoinModal] = useState(false);
       const [tempRoomId, setTempRoomId] = useState("");
       const [tempPlayerName, setTempPlayerName] = useState("");
       const [playersList, setPlayersList] = useState([]); 
@@ -331,14 +332,15 @@
       }, [bridges, currentLevelId, isMultiplayer, isHost, myPeerId, randomLevelData, showSolution, startTime]);
 
       useEffect(() => {
-        if (isWon) return; 
+        if (isWon || screen !== 'game') return; 
         const timer = setInterval(() => {
           setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
         }, 1000);
         return () => clearInterval(timer);
-      }, [startTime, isWon]);
+      }, [startTime, isWon, screen]);
 
       useEffect(() => {
+        if (screen !== 'game') return;
         const el = zoomContainerRef.current;
         if (!el) return;
         const handleTouchMove = (e) => {
@@ -362,7 +364,7 @@
           el.removeEventListener('touchend', handleTouchEnd);
           el.removeEventListener('touchcancel', handleTouchEnd);
         };
-      }, []);
+      }, [screen]);
 
       const broadcastToAll = (type, data, excludePeerId = null) => {
         Object.values(hostConnsRef.current).forEach(conn => {
@@ -376,15 +378,27 @@
         setPlayersList([]); playersRef.current = []; hostConnsRef.current = {}; clientConnRef.current = null;
       };
 
+      const handleGoHome = () => {
+        if (isMultiplayer) disconnectMultiplayer();
+        setScreen('home');
+      };
+
+      const startSinglePlayer = () => {
+        setIsMultiplayer(false);
+        handleReset();
+        setScreen('game');
+      };
+
       const startMultiplayer = (roomCode, playerName) => {
         if (!roomCode || !playerName) return alert("請完整輸入房號與您的暱稱！");
-        const fullRoomId = 'hashi-game-ultimate-v5-' + roomCode; 
+        const fullRoomId = 'hashi-game-v6-' + roomCode; 
         const peer = new Peer(fullRoomId);
 
         peer.on('open', (id) => {
           setIsHost(true); setIsMultiplayer(true); setRoomId(roomCode); setMyPeerId(id);
           const initialPlayers = [{ id, name: playerName, isHost: true, color: COLORS[0] }];
           setPlayersList(initialPlayers); playersRef.current = initialPlayers;
+          setScreen('game'); // 進入遊戲畫面
           
           peer.on('connection', (conn) => {
             hostConnsRef.current[conn.peer] = conn;
@@ -441,6 +455,7 @@
                
                conn.on('open', () => {
                  setIsHost(false); setIsMultiplayer(true); setRoomId(roomCode);
+                 setScreen('game'); // 進入遊戲畫面
                  conn.send({ type: 'JOIN', data: { name: playerName } });
                });
 
@@ -483,7 +498,11 @@
                  }
                });
 
-               conn.on('close', () => { alert("與主機斷開連線！"); disconnectMultiplayer(); });
+               conn.on('close', () => { 
+                 alert("與主機斷開連線！"); 
+                 disconnectMultiplayer(); 
+                 setScreen('home');
+               });
              });
              peerRef.current = clientPeer;
           } else { alert("連線發生錯誤：" + err.message); }
@@ -746,19 +765,11 @@
       const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.3, 0.4));
       const handleZoomReset = () => setZoomLevel(1);
 
-      const maxGridX = Math.max(...currentLevel.islands.map(i => i.x), 0); 
-      const maxGridY = Math.max(...currentLevel.islands.map(i => i.y), 0);
-      const gridWidth = currentLevel.width || (maxGridX + 1);
-      const gridHeight = currentLevel.height || (maxGridY + 1);
-
-      const SCALE = 65;
-      const PADDING = 85;
-      const ISLAND_RADIUS = 20;
-
-      const svgWidthBase = (gridWidth - 1) * SCALE + PADDING * 2;
-      const svgHeightBase = (gridHeight - 1) * SCALE + PADDING * 2;
-
+      // SVG 繪製函數
       const renderGridLines = () => {
+        const gridWidth = currentLevel.width || 10;
+        const gridHeight = currentLevel.height || 10;
+        const SCALE = 65; const PADDING = 85;
         const lines = [];
         for(let i=0; i<gridWidth; i++) {
           lines.push(<line key={`gv_${i}`} x1={i * SCALE + PADDING} y1={PADDING} x2={i * SCALE + PADDING} y2={(gridHeight - 1) * SCALE + PADDING} stroke="#94a3b8" strokeWidth="2" strokeOpacity="0.8" />);
@@ -770,6 +781,7 @@
       };
 
       const renderSolutionBridge = (bridge) => {
+        const SCALE = 65; const PADDING = 85;
         const islandsMap = {};
         currentLevel.islands.forEach(i => islandsMap[i.id] = i);
         const from = islandsMap[bridge.from];
@@ -784,22 +796,23 @@
           <g key={`sol_${bridge.from}_${bridge.to}`} className="pointer-events-none opacity-60">
             {bridge.count === 1 && ( <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth="8" strokeLinecap="round" className="solution-line" /> )}
             {bridge.count === 2 && bridge.type === 'h' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1} y1={y1 - 6} x2={x2} y2={y2 - 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
                 <line x1={x1} y1={y1 + 6} x2={x2} y2={y2 + 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </React.Fragment>
+              </g>
             )}
             {bridge.count === 2 && bridge.type === 'v' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1 - 6} y1={y1} x2={x2 - 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
                 <line x1={x1 + 6} y1={y1} x2={x2 + 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </React.Fragment>
+              </g>
             )}
           </g>
         );
-      }
+      };
 
       const renderBridge = (bridge) => {
+        const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 20;
         const islandsMap = {};
         currentLevel.islands.forEach(i => islandsMap[i.id] = i);
         const from = islandsMap[bridge.from];
@@ -809,7 +822,7 @@
         const x1 = from.x * SCALE + PADDING; const y1 = from.y * SCALE + PADDING;
         const x2 = to.x * SCALE + PADDING;   const y2 = to.y * SCALE + PADDING;
 
-        let lineStroke = "#1e293b"; 
+        let lineStroke = "#2d2a26"; 
         let lineOpacity = 1;
 
         if (stateRef.current.isMultiplayer && bridge.count > 0 && bridge.owner && bridge.owner !== stateRef.current.myPeerId) {
@@ -828,27 +841,28 @@
             
             {bridge.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />}
             {bridge.count === 2 && bridge.type === 'h' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1} y1={y1 - 5} x2={x2} y2={y2 - 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
                 <line x1={x1} y1={y1 + 5} x2={x2} y2={y2 + 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </React.Fragment>
+              </g>
             )}
             {bridge.count === 2 && bridge.type === 'v' && (
-              <React.Fragment>
+              <g>
                 <line x1={x1 - 5} y1={y1} x2={x2 - 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
                 <line x1={x1 + 5} y1={y1} x2={x2 + 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </React.Fragment>
+              </g>
             )}
           </g>
         );
       };
 
       const renderIsland = (island) => {
+        const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 20;
         const cx = island.x * SCALE + PADDING;
         const cy = island.y * SCALE + PADDING;
         const current = islandCurrentCounts[island.id];
         
-        let strokeColor = "#1e293b"; let bgColor = "#ffffff"; let textColor = "#1e293b";
+        let strokeColor = "#2d2a26"; let bgColor = "#fffdfa"; let textColor = "#2d2a26";
         if (current === island.req) {
           strokeColor = "#059669"; bgColor = "#d1fae5"; textColor = "#065f46";
         } else if (current > island.req) {
@@ -857,7 +871,7 @@
 
         return (
           <g key={`island-${island.id}`}>
-            <circle cx={cx + 3} cy={cy + 3} r={ISLAND_RADIUS} fill="rgba(30,41,59,0.2)" />
+            <circle cx={cx + 3} cy={cy + 3} r={ISLAND_RADIUS} fill="rgba(45,42,38,0.15)" />
             <circle cx={cx} cy={cy} r={ISLAND_RADIUS} fill={bgColor} stroke={strokeColor} strokeWidth="4" className="transition-colors duration-300" />
             <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none transition-colors duration-300" fill={textColor}>
               {island.req}
@@ -866,11 +880,75 @@
         );
       };
 
+      // ==========================================
+      // UI 渲染區塊
+      // ==========================================
+
+      // 1. 首頁 (文青手繪風)
+      if (screen === 'home') {
+        return (
+          <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative overflow-hidden animate-fadeIn">
+            <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-10 rounded-2xl shadow-[8px_8px_0px_#2d2a26] max-w-md w-full text-center relative transform -rotate-1 z-10">
+               <h1 className="text-6xl font-black text-[#2d2a26] mb-4 tracking-widest flex justify-center gap-3">
+                  <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform rotate-3 shadow-[4px_4px_0px_#2d2a26]">數</span>
+                  <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform -rotate-2 shadow-[4px_4px_0px_#2d2a26]">橋</span>
+               </h1>
+               <p className="text-slate-600 font-bold mb-10 text-lg border-b-[3px] border-dashed border-slate-300 pb-4">Hashi Puzzle · 手繪文青版</p>
+               
+               <div className="flex flex-col gap-5">
+                  <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform rotate-1">
+                    👤 單人遊玩
+                  </button>
+                  <button onClick={() => setScreen('join')} className="w-full py-4 bg-emerald-400 border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform -rotate-1">
+                    🌐 多人連線
+                  </button>
+               </div>
+            </div>
+          </div>
+        );
+      }
+
+      // 2. 準備連線畫面
+      if (screen === 'join') {
+        return (
+          <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative animate-fadeIn">
+            <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-8 rounded-2xl shadow-[8px_8px_0px_#2d2a26] max-w-md w-full transform rotate-1 z-10">
+              <h2 className="text-2xl font-black text-[#2d2a26] mb-4 inline-block border-b-[4px] border-[#ffcc00] pb-1">🌐 進入多人連線</h2>
+              <p className="text-sm font-bold text-slate-600 mb-6 leading-relaxed">首位輸入房號者將成為「主機 👑」，其餘輸入同房號者即自動加入該房間。</p>
+              
+              <div className="flex flex-col gap-4 mb-8">
+                <div>
+                  <label className="block text-[#2d2a26] font-bold text-sm mb-1">您的暱稱：</label>
+                  <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={(e) => setTempPlayerName(e.target.value)} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-bold text-base shadow-[3px_3px_0px_#2d2a26] outline-none focus:bg-yellow-50" />
+                </div>
+                <div>
+                  <label className="block text-[#2d2a26] font-bold text-sm mb-1">建立/加入的房號：</label>
+                  <input type="text" placeholder="例如：8888" value={tempRoomId} onChange={(e) => setTempRoomId(e.target.value)} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-bold text-base shadow-[3px_3px_0px_#2d2a26] outline-none focus:bg-yellow-50" />
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button onClick={() => setScreen('home')} className="flex-1 py-3 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">返回</button>
+                <button onClick={() => { startMultiplayer(tempRoomId.trim(), tempPlayerName.trim()); }} className="flex-1 py-3 bg-emerald-400 text-[#2d2a26] border-[4px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">連線出發！</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // 3. 遊戲畫面
+      const gridWidth = currentLevel.width || 10;
+      const gridHeight = currentLevel.height || 10;
+      const SCALE = 65; const PADDING = 85;
+      const svgWidthBase = (gridWidth - 1) * SCALE + PADDING * 2;
+      const svgHeightBase = (gridHeight - 1) * SCALE + PADDING * 2;
+
       return (
-        <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans overflow-hidden">
-          <div className="w-full max-w-[1200px] bg-[#fffaf0] rounded-xl border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,1)] flex flex-col h-full relative z-10">
+        <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans overflow-hidden animate-fadeIn">
+          <div className="w-full max-w-[1200px] bg-[#fffdfa] rounded-xl border-4 border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] flex flex-col h-full relative z-10 overflow-hidden">
             
-            <div className={`bg-[#ffcc00] border-b-4 border-slate-800 text-slate-900 shrink-0 z-20 transition-all duration-300 ease-in-out ${isHeaderCollapsed ? 'p-2 flex flex-col md:flex-row gap-2 items-center justify-between' : 'p-3 md:p-5 flex flex-col gap-3'}`}>
+            {/* 上方控制面板 */}
+            <div className={`bg-[#ffcc00] border-b-4 border-[#2d2a26] text-[#2d2a26] shrink-0 z-20 transition-all duration-300 ease-in-out ${isHeaderCollapsed ? 'p-2 flex flex-col md:flex-row gap-2 items-center justify-between' : 'p-3 md:p-5 flex flex-col gap-3'}`}>
               <div className="flex justify-between items-center w-full flex-wrap gap-2">
                 <div className="flex items-center gap-3 flex-wrap">
                   {!isHeaderCollapsed ? (
@@ -879,12 +957,12 @@
                     <h1 className="text-lg font-black tracking-tight uppercase px-2">🌉 數橋</h1>
                   )}
                   
-                  <div className="flex items-center gap-1 bg-slate-800 text-white px-2 md:px-3 py-1 rounded-lg font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.3)] text-sm md:text-base">
+                  <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 md:px-3 py-1 rounded-lg font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-sm md:text-base">
                      ⏱ {formatTime(elapsedTime)}
                   </div>
 
                   {isMultiplayer && (
-                    <span className="bg-emerald-500 text-white px-2 py-1 rounded border-2 border-slate-800 font-bold text-xs md:text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] animate-pulse flex items-center gap-1">
+                    <span className="bg-emerald-400 text-[#2d2a26] px-2 py-1 rounded-lg border-2 border-[#2d2a26] font-black text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] animate-pulse flex items-center gap-1">
                       {isHost ? '👑 主機' : '👤 玩家'} | 房號: {roomId} 
                     </span>
                   )}
@@ -896,15 +974,15 @@
                       disabled={isMultiplayer && !isHost}
                       value={currentLevelId} 
                       onChange={(e) => handleLevelChange(Number(e.target.value))} 
-                      className={`px-2 py-1 rounded-md border-2 border-slate-800 font-bold bg-white text-slate-800 text-sm outline-none shadow-[2px_2px_0px_rgba(30,41,59,1)] max-w-[120px] sm:max-w-none ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                      className={`px-2 py-1 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-sm outline-none shadow-[2px_2px_0px_#2d2a26] max-w-[120px] sm:max-w-none ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
                       {LEVELS.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
                     </select>
 
-                    <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 py-1 bg-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100" title="復原">↩️</button>
-                    <button onClick={handleReset} disabled={isMultiplayer && !isHost} className="px-2 py-1 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-red-600" title="重置">🔄</button>
-                    <button onClick={() => setShowSaveModal(true)} className="px-2 py-1 bg-blue-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-blue-600" title="存檔/讀檔">💾</button>
-                    <button onClick={() => setIsHeaderCollapsed(false)} className="ml-auto bg-slate-800 text-white px-2 py-1 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700">🔽 展開</button>
+                    <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 py-1 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100" title="復原">↩️</button>
+                    {(!isMultiplayer || isHost) && <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26] hover:bg-red-600" title="重置">🔄</button>}
+                    <button onClick={() => setShowSaveModal(true)} className="px-2 py-1 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26] hover:bg-blue-600" title="存檔/讀檔">💾</button>
+                    <button onClick={() => setIsHeaderCollapsed(false)} className="ml-auto bg-[#2d2a26] text-white px-2 py-1 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800">🔽 展開</button>
                   </div>
                 )}
                 
@@ -912,19 +990,19 @@
                   <div className="flex items-center gap-2 flex-wrap justify-end mt-2 md:mt-0 w-full md:w-auto">
                     <button 
                       onClick={() => setShowSaveModal(true)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white border-2 border-slate-800 px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1"
+                      className="bg-blue-500 hover:bg-blue-600 text-white border-2 border-[#2d2a26] px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none flex items-center gap-1"
                     >
                       💾 <span className="hidden md:inline">存檔/讀檔</span><span className="md:hidden">存檔</span>
                     </button>
                     <button 
-                      onClick={() => isMultiplayer ? disconnectMultiplayer() : setShowJoinModal(true)}
-                      className={`${isMultiplayer ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white border-2 border-slate-800 px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1`}
+                      onClick={handleGoHome}
+                      className="bg-red-500 hover:bg-red-600 text-white border-2 border-[#2d2a26] px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none flex items-center gap-1"
                     >
-                      {isMultiplayer ? "🔌 斷開" : "🌐 連線"}
+                      🏠 回主畫面
                     </button>
                     <button 
                       onClick={() => setIsHeaderCollapsed(true)}
-                      className="bg-slate-800 hover:bg-slate-700 text-white px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1"
+                      className="bg-[#2d2a26] hover:bg-slate-800 text-white px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1"
                     >
                       🔼 <span className="hidden md:inline">縮小面板</span><span className="md:hidden">縮小</span>
                     </button>
@@ -933,10 +1011,10 @@
               </div>
               
               {!isHeaderCollapsed && (
-                <React.Fragment>
-                  <div className="bg-white border-2 border-slate-800 rounded-lg p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] flex flex-col md:flex-row gap-4 mb-1">
+                <div>
+                  <div className="bg-white border-[3px] border-[#2d2a26] rounded-xl p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_#2d2a26] flex flex-col md:flex-row gap-4 mb-2">
                     <div className="flex-1">
-                      <h3 className="text-base md:text-lg font-black mb-1 md:mb-2 border-b-4 border-[#ffcc00] inline-block pb-1">📜 遊戲四大規則</h3>
+                      <h3 className="text-base md:text-lg font-black mb-1 md:mb-2 border-b-[3px] border-[#ffcc00] inline-block pb-1">📜 遊戲四大規則</h3>
                       <ol className="list-decimal list-outside ml-5 space-y-1 md:space-y-1.5 text-xs md:text-sm leading-relaxed font-bold">
                         <li>每個圓圈是一座「島」，數字代表需要<span className="text-blue-600 font-black">幾座橋樑</span>。</li>
                         <li>橋樑必須是<span className="text-blue-600 font-black">垂直或水平</span>方向。</li>
@@ -945,11 +1023,11 @@
                         <li>完成時，每個島都要能<span className="text-emerald-600 font-black">通往其他任何島</span>。</li>
                       </ol>
                     </div>
-                    <div className="md:w-1/3 bg-[#ffcc00]/20 p-3 rounded-lg border-2 border-slate-800 flex flex-col justify-center relative">
+                    <div className="md:w-1/3 bg-[#ffcc00]/20 p-3 rounded-xl border-[3px] border-dashed border-[#2d2a26] flex flex-col justify-center relative">
                       <p className="text-slate-800 font-black text-sm md:text-base mb-1 flex items-center gap-1"><span>💡</span> 提示與狀態：</p>
                       <p className="text-slate-700 text-xs md:text-sm font-bold leading-relaxed">{currentLevel.description}</p>
                       {isMultiplayer && (
-                        <div className="mt-2 text-xs text-emerald-700 font-bold bg-emerald-100 p-1 rounded border border-emerald-300">
+                        <div className="mt-2 text-xs text-emerald-800 font-bold bg-emerald-200 p-1.5 rounded-lg border-2 border-emerald-500 shadow-sm">
                           多人模式中，已停用「上一步」功能以防同學畫面互搶。
                         </div>
                       )}
@@ -957,12 +1035,12 @@
                   </div>
 
                   <div className="flex flex-wrap gap-2 items-center mt-2 w-full">
-                    <span className="font-bold text-slate-800 mr-1 text-sm md:text-base hidden md:inline">選擇：</span>
+                    <span className="font-bold text-[#2d2a26] mr-1 text-sm md:text-base hidden md:inline">選擇：</span>
                     <select
                       disabled={isMultiplayer && !isHost}
                       value={currentLevelId}
                       onChange={(e) => handleLevelChange(Number(e.target.value))}
-                      className={`px-2 py-1.5 rounded-md border-2 border-slate-800 font-bold bg-white text-slate-800 text-xs md:text-base outline-none shadow-[3px_3px_0px_rgba(30,41,59,1)] max-w-[140px] sm:max-w-none ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                      className={`px-2 py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-base outline-none shadow-[3px_3px_0px_#2d2a26] max-w-[140px] sm:max-w-none ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
                       {LEVELS.map(level => (
                         <option key={level.id} value={level.id}>{level.name}</option>
@@ -972,38 +1050,40 @@
                     
                     <div className="ml-auto flex gap-2 flex-wrap justify-end">
                       {!isWon && !showSolution && (
-                        <button onClick={handleShowSolution} className="px-2 md:px-4 py-1.5 bg-yellow-400 text-slate-900 border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-yellow-500 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                        <button onClick={handleShowSolution} className="px-2 md:px-4 py-1.5 bg-yellow-400 text-[#2d2a26] border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] hover:bg-yellow-500 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
                           💡 解答
                         </button>
                       )}
                       
-                      <button onClick={handleRegenerateRandom} className="px-2 md:px-4 py-1.5 bg-blue-500 text-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-blue-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                      <button onClick={handleRegenerateRandom} className="px-2 md:px-4 py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] hover:bg-blue-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
                         🎲 新題
                       </button>
 
-                      <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 md:px-4 py-1.5 bg-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                      <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 md:px-4 py-1.5 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1 text-[#2d2a26]">
                         ↩️ <span className="hidden md:inline">復原</span>
                       </button>
                       
-                      <button onClick={handleReset} disabled={isMultiplayer && !isHost} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-red-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                        🔄 <span className="hidden md:inline">重置</span>
-                      </button>
+                      {(!isMultiplayer || isHost) && (
+                        <button onClick={handleReset} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] hover:bg-red-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                          🔄 <span className="hidden md:inline">重置</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-                </React.Fragment>
+                </div>
               )}
             </div>
 
             {isMultiplayer && (
-              <div className="px-4 py-2 bg-white border-b-4 border-slate-800 flex flex-wrap gap-2 items-center z-10 shadow-sm shrink-0">
-                <span className="font-black text-slate-800 text-sm">👥 線上玩家：</span>
+              <div className="px-4 py-2 bg-[#f4f1ea] border-b-[3px] border-[#2d2a26] flex flex-wrap gap-2 items-center z-10 shadow-inner shrink-0">
+                <span className="font-black text-[#2d2a26] text-sm">👥 線上玩家：</span>
                 {playersList.map((p, idx) => (
                   <span 
                     key={idx} 
                     onClick={() => handlePlayerColorChange(p.id)}
                     title="點擊更換顏色"
-                    className="px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-slate-100 text-slate-800 flex items-center shadow-sm cursor-pointer hover:bg-slate-200 transition-colors" 
-                    style={{ borderLeftColor: p.id === myPeerId ? '#1e293b' : p.color, borderLeftWidth: '6px' }}
+                    className="px-2 py-0.5 rounded border-2 border-[#2d2a26] text-xs font-bold bg-white text-[#2d2a26] flex items-center shadow-sm cursor-pointer hover:bg-slate-100 transition-colors" 
+                    style={{ borderLeftColor: p.id === myPeerId ? '#2d2a26' : p.color, borderLeftWidth: '6px' }}
                   >
                     {p.name} {p.isHost && '👑'} {p.id === myPeerId && '(你)'}
                   </span>
@@ -1012,19 +1092,19 @@
             )}
 
             {!isHeaderCollapsed && (
-              <div className="h-8 shrink-0 flex items-center justify-center bg-slate-800 text-white border-b-4 border-slate-800 z-10 font-bold tracking-wide">
-                {message && <span className="text-yellow-300 animate-pulse">{message}</span>}
+              <div className="h-8 shrink-0 flex items-center justify-center bg-[#2d2a26] text-[#ffcc00] border-b-4 border-[#2d2a26] z-10 font-bold tracking-wide">
+                {message && <span className="animate-pulse">{message}</span>}
                 {!message && !isWon && <span className="text-xs md:text-sm hidden md:inline">支援滑鼠拖曳、滾輪縮放；右下角有縮放按鈕可供使用。</span>}
                 {!message && !isWon && <span className="text-xs md:text-sm md:hidden">點擊島嶼間空白處架橋。支援雙指縮放與拖曳。</span>}
               </div>
             )}
 
-            <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
+            <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffdfa]">
               
               <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto">
-                <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">＋</button>
-                <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">－</button>
-                <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 border-2 border-slate-800 rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
+                <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_#2d2a26] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">＋</button>
+                <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_#2d2a26] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">－</button>
+                <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-[#2d2a26] border-[3px] border-[#2d2a26] rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.5)] hover:bg-slate-800 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
               </div>
 
               <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative">
@@ -1047,15 +1127,15 @@
           
           {isWon && !hideVictoryModal && (
             <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60]">
-              <div className="pointer-events-auto bg-white rounded-2xl p-5 md:p-6 border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,1)] text-center min-w-[280px] md:min-w-[320px] animate-popUp relative">
-                <button onClick={() => setHideVictoryModal(true)} className="absolute top-2 right-3 text-slate-400 hover:text-slate-800 text-2xl font-black">✕</button>
-                <div className="text-4xl md:text-5xl mb-2">💥🏆</div>
-                <h2 className="text-xl md:text-2xl font-black text-slate-800 mb-2 uppercase tracking-wide">PERFECT!</h2>
+              <div className="pointer-events-auto bg-white rounded-2xl p-5 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUp relative">
+                <button onClick={() => setHideVictoryModal(true)} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
+                <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
+                <h2 className="text-2xl md:text-3xl font-black text-[#2d2a26] mb-2 uppercase tracking-wide">PERFECT!</h2>
                 <p className="text-slate-600 mb-1 text-sm md:text-base font-bold">所有的島嶼都成功連結了！</p>
-                <p className="text-blue-600 mb-4 text-xs md:text-sm font-bold border-b-2 border-dashed border-slate-300 pb-4">完成時間：{formatTime(elapsedTime)}</p>
+                <p className="text-blue-600 mb-6 text-sm md:text-base font-bold border-b-[3px] border-dashed border-slate-300 pb-4">完成時間：{formatTime(elapsedTime)}</p>
                 <div className="flex justify-center gap-3">
-                  <button onClick={handleRegenerateRandom} className="px-4 md:px-5 py-2 bg-[#ffcc00] hover:bg-[#e6b800] text-slate-900 border-2 border-slate-800 font-black rounded-xl shadow-[4px_4px_0px_rgba(30,41,59,1)] active:translate-y-1 active:shadow-none transition-all text-sm md:text-base">
-                    換個新題目 ➔
+                  <button onClick={handleRegenerateRandom} className="px-5 py-3 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] font-black rounded-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all text-base md:text-lg">
+                    再來一局 ➔
                   </button>
                 </div>
               </div>
@@ -1063,56 +1143,33 @@
           )}
 
           {isWon && hideVictoryModal && (
-            <button onClick={() => setHideVictoryModal(false)} className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#ffcc00] text-slate-900 border-4 border-slate-800 px-5 py-2 rounded-full shadow-[6px_6px_0px_rgba(30,41,59,1)] z-50 hover:bg-[#e6b800] active:translate-y-1 active:shadow-none transition-all font-black flex items-center gap-2 tracking-wide">
-              🏆 SHOW VICTORY
+            <button onClick={() => setHideVictoryModal(false)} className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] z-50 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0px_#2d2a26] transition-all font-black flex items-center gap-2 tracking-wide text-lg">
+              🏆 顯示成績
             </button>
-          )}
-
-          {showJoinModal && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-              <div className="bg-white border-4 border-slate-800 rounded-2xl p-6 shadow-[10px_10px_0px_rgba(0,0,0,1)] w-full max-w-sm animate-fadeIn">
-                <h2 className="text-2xl font-black text-slate-800 mb-2 border-b-4 border-[#ffcc00] inline-block pb-1">🌐 多人連線</h2>
-                <p className="text-sm font-bold text-slate-600 mb-4">第一個輸入房號的人將成為「主機👑」，其他人輸入相同房號即可加入房間。</p>
-                
-                <div className="flex flex-col gap-3 mb-5">
-                  <div>
-                    <label className="block text-slate-800 font-bold text-sm mb-1">您的暱稱：</label>
-                    <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={(e) => setTempPlayerName(e.target.value)} className="w-full border-2 border-slate-800 rounded-lg p-2 font-bold text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] outline-none focus:bg-yellow-50" />
-                  </div>
-                  <div>
-                    <label className="block text-slate-800 font-bold text-sm mb-1">欲建立/加入的房號：</label>
-                    <input type="text" placeholder="例如：8888" value={tempRoomId} onChange={(e) => setTempRoomId(e.target.value)} className="w-full border-2 border-slate-800 rounded-lg p-2 font-bold text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] outline-none focus:bg-yellow-50" />
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button onClick={() => setShowJoinModal(false)} className="flex-1 py-2 bg-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100">取消</button>
-                  <button onClick={() => { startMultiplayer(tempRoomId.trim(), tempPlayerName.trim()); setShowJoinModal(false); }} className="flex-1 py-2 bg-emerald-500 text-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-emerald-600">進入房間</button>
-                </div>
-              </div>
-            </div>
           )}
 
           {showSaveModal && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-              <div className="bg-white border-4 border-slate-800 rounded-2xl p-6 shadow-[10px_10px_0px_rgba(0,0,0,1)] w-full max-w-md animate-fadeIn">
-                <h2 className="text-2xl font-black text-slate-800 mb-2 border-b-4 border-blue-500 inline-block pb-1">💾 存檔與讀檔</h2>
+              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_#2d2a26] w-full max-w-md animate-fadeIn rotate-1">
+                <h2 className="text-2xl font-black text-[#2d2a26] mb-2 border-b-[4px] border-blue-500 inline-block pb-1">💾 存檔與讀檔</h2>
                 <p className="text-sm font-bold text-slate-600 mb-4">將進度轉換為代碼，下次上課貼上代碼即可恢復！</p>
                 
-                <div className="mb-4">
-                  <button onClick={handleSaveCode} className="w-full py-2 bg-blue-500 text-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-blue-600 mb-2">產生目前的進度代碼</button>
+                <div className="mb-6">
+                  <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mb-3 text-lg">
+                    產生進度代碼
+                  </button>
                   <textarea 
                     value={saveCode} 
                     onChange={(e) => setSaveCode(e.target.value)} 
                     placeholder="點擊上方生成，或是將舊代碼貼在此處" 
                     rows="4" 
-                    className="w-full border-2 border-slate-800 rounded-lg p-2 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all"
+                    className="w-full border-[3px] border-[#2d2a26] rounded-xl p-3 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white"
                   />
                 </div>
 
-                <div className="flex gap-3">
-                  <button onClick={() => setShowSaveModal(false)} className="flex-1 py-2 bg-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100">關閉</button>
-                  <button onClick={handleLoadCode} className="flex-1 py-2 bg-emerald-500 text-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-emerald-600">載入代碼</button>
+                <div className="flex gap-4">
+                  <button onClick={() => setShowSaveModal(false)} className="flex-1 py-3 bg-white border-[3px] border-[#2d2a26] rounded-xl font-black text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">關閉</button>
+                  <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">載入代碼</button>
                 </div>
               </div>
             </div>
