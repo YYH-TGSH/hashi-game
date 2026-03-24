@@ -43,13 +43,6 @@
     .animate-popUp {
       animation: popUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
-    @keyframes slideUpFade {
-      0% { transform: translate(-50%, 20px); opacity: 0; }
-      100% { transform: translate(-50%, 0); opacity: 1; }
-    }
-    .animate-slideUpFade {
-      animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-    }
     .custom-scrollbar::-webkit-scrollbar {
       width: 12px; height: 12px;
     }
@@ -88,6 +81,7 @@
       { id: 5, name: "🎲 隨機 (20x20 史詩)", isRandom: true, width: 20, height: 20 }
     ];
 
+    // 全新有機散落演算法
     const generateRandomHashi = (levelDef) => {
       const width = levelDef.width;
       const height = levelDef.height;
@@ -96,50 +90,57 @@
       let grid = Array(height).fill(null).map(() => Array(width).fill(null));
 
       let islandId = 1;
-      let startX = Math.floor(Math.random() * (width - 2)) + 1; 
-      let startY = Math.floor(Math.random() * (height - 2)) + 1;
+      
+      // 改從「地圖中心點」開始生長，避免卡在角落
+      let startX = Math.floor(width / 2) + Math.floor(Math.random() * 3) - 1; 
+      let startY = Math.floor(height / 2) + Math.floor(Math.random() * 3) - 1;
       let firstIsland = { id: islandId++, x: startX, y: startY, req: 0 };
       islands.push(firstIsland);
       grid[startY][startX] = { type: 'island', island: firstIsland };
 
       const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; 
-      
       const area = width * height;
-      let targetIslandCount = 20;
-      let maxAttempts = area * 10;
       
-      if (area === 25) targetIslandCount = 7;
-      else if (area === 100) targetIslandCount = 22;
-      else if (area === 200) targetIslandCount = 45; 
-      else if (area === 225) targetIslandCount = 45;
-      else if (area === 400) targetIslandCount = 80;
+      // 大幅降低島嶼數量，並且設定「最低橋樑長度(MIN_BRIDGE_LEN)」強制拉開間距
+      let targetIslandCount = 12; 
+      let MIN_BRIDGE_LEN = 3;
+      
+      if (area <= 25) { targetIslandCount = 5; MIN_BRIDGE_LEN = 2; }
+      else if (area <= 100) { targetIslandCount = 12; MIN_BRIDGE_LEN = 3; }
+      else if (area <= 200) { targetIslandCount = 22; MIN_BRIDGE_LEN = 3; } 
+      else if (area <= 225) { targetIslandCount = 26; MIN_BRIDGE_LEN = 3; }
+      else { targetIslandCount = 45; MIN_BRIDGE_LEN = 3; }
 
+      let maxAttempts = area * 20;
       let attempts = 0;
+      
       while (islands.length < targetIslandCount && attempts < maxAttempts) {
         attempts++;
         
-        if (Math.random() < 0.2 && solutionBridges.length > 0) {
-          let b = solutionBridges[Math.floor(Math.random() * solutionBridges.length)];
-          if (b.count < 2) b.count = 2;
-          continue;
-        }
-
         let source = islands[Math.floor(Math.random() * islands.length)];
         let dir = dirs[Math.floor(Math.random() * dirs.length)];
         
         let d = 1;
         let hitIsland = null;
         let max_d = 0;
+        
         while(true) {
             let px = source.x + dir[0] * d;
             let py = source.y + dir[1] * d;
-            if (px < 0 || px >= width || py < 0 || py >= height) break;
+            
+            // 邊緣保留 1 格 Padding 呼吸空間
+            if (px < 1 || px >= width - 1 || py < 1 || py >= height - 1) {
+                if (px < 0 || px >= width || py < 0 || py >= height) break;
+                if (Math.random() > 0.1) break; // 90% 機率不貼邊
+            }
             
             let cell = grid[py][px];
             if (cell) {
                 if (cell.type === 'island') {
                     hitIsland = cell.island;
                     max_d = d;
+                } else if (cell.type === 'bridge') {
+                    max_d = d - 1; // 撞到橋樑，退後一格
                 }
                 break;
             }
@@ -147,26 +148,43 @@
             d++;
         }
 
-        if (max_d === 0 || (max_d === 1 && !hitIsland)) continue; 
+        // 若延伸距離不足「最低標準」，則放棄本次生長
+        if (max_d < MIN_BRIDGE_LEN && !hitIsland) continue; 
 
         let target_d;
         let targetIslandObj = null;
 
-        if (hitIsland) {
-            target_d = max_d;
-            targetIslandObj = hitIsland;
-            if (max_d > 2 && Math.random() < 0.4) {
-                target_d = Math.floor(Math.random() * (max_d - 2)) + 2;
-                targetIslandObj = null;
+        // 若撞到島嶼且距離夠遠，低機率相連 (避免形成太多迴圈方塊)
+        if (hitIsland && max_d >= MIN_BRIDGE_LEN) {
+            if (Math.random() < 0.2) {
+                target_d = max_d;
+                targetIslandObj = hitIsland;
+            } else {
+                target_d = Math.floor(Math.random() * (max_d - MIN_BRIDGE_LEN + 1)) + MIN_BRIDGE_LEN;
             }
+        } else if (max_d >= MIN_BRIDGE_LEN) {
+            target_d = Math.floor(Math.random() * (max_d - MIN_BRIDGE_LEN + 1)) + MIN_BRIDGE_LEN;
         } else {
-            target_d = Math.floor(Math.random() * (max_d - 1)) + 2;
+            continue;
         }
 
         let targetX = source.x + dir[0] * target_d;
         let targetY = source.y + dir[1] * target_d;
 
         if (!targetIslandObj) {
+            // 強制空間排斥：周圍 3x3 絕對淨空，並排斥馬走法(Knight move)的距離
+            let tooClose = false;
+            for (let i = 0; i < islands.length; i++) {
+                let isl = islands[i];
+                let dx = Math.abs(isl.x - targetX);
+                let dy = Math.abs(isl.y - targetY);
+                if (dx <= 1 && dy <= 1) { tooClose = true; break; }
+                if ((dx === 1 && dy === 2) || (dx === 2 && dy === 1)) {
+                    if (Math.random() < 0.8) { tooClose = true; break; } // 80% 排斥馬走法
+                }
+            }
+            if (tooClose) continue;
+
             targetIslandObj = { id: islandId++, x: targetX, y: targetY, req: 0 };
             islands.push(targetIslandObj);
             grid[targetY][targetX] = { type: 'island', island: targetIslandObj };
@@ -178,16 +196,17 @@
         );
 
         if (existingBridge) {
-           if (existingBridge.count === 1 && Math.random() < 0.25) {
+           if (existingBridge.count === 1 && Math.random() < 0.2) {
                existingBridge.count = 2;
            }
            continue;
         }
 
+        // 偏好單橋，讓畫面更輕盈
         let newBridge = {
           from: source.id,
           to: targetIslandObj.id,
-          count: Math.random() < 0.55 ? 1 : 2, 
+          count: Math.random() < 0.7 ? 1 : 2, 
           type: dir[0] !== 0 ? 'h' : 'v'
         };
         solutionBridges.push(newBridge);
@@ -199,6 +218,7 @@
         }
       }
 
+      // 結算所有島嶼的數字
       solutionBridges.forEach(b => {
         let fromNode = islands.find(i => i.id === b.from);
         let toNode = islands.find(i => i.id === b.to);
@@ -206,9 +226,10 @@
         toNode.req += b.count;
       });
 
+      // --- 🎯 強制奇偶平衡：優先透過「減少橋樑」來達成，保持畫面留白 ---
       let evenIslands = islands.filter(i => i.req % 2 === 0);
       let adjustAttempts = 0;
-      const maxEvenCount = Math.floor(islands.length / 2);
+      const maxEvenCount = Math.floor(islands.length * 0.45); // 偶數最多只能佔 45%
       
       while (evenIslands.length > maxEvenCount && adjustAttempts < 500) {
         adjustAttempts++;
@@ -233,7 +254,8 @@
         }
 
         if (targetBridge) {
-          let diff = targetBridge.count === 1 ? 1 : -1;
+          // 若為雙橋則拆成單橋，若為單橋則變雙橋。拆橋優先！
+          let diff = targetBridge.count === 2 ? -1 : 1;
           targetBridge.count += diff;
           let fromNode = islands.find(i => i.id === targetBridge.from);
           let toNode = islands.find(i => i.id === targetBridge.to);
@@ -242,6 +264,9 @@
         }
         evenIslands = islands.filter(i => i.req % 2 === 0);
       }
+      
+      // 清除可能因為平衡而變成 0 的幽靈島嶼
+      islands = islands.filter(i => i.req > 0);
 
       return {
         id: levelDef.id,
@@ -405,7 +430,7 @@
 
       const startMultiplayer = (roomCode, playerName) => {
         if (!roomCode || !playerName) return alert("請完整輸入房號與您的暱稱！");
-        const fullRoomId = 'hashi-game-v8-' + roomCode; 
+        const fullRoomId = 'hashi-game-v10-' + roomCode; 
         const peer = new Peer(fullRoomId);
 
         peer.on('open', (id) => {
@@ -1230,7 +1255,7 @@
                 
                 <div className="mb-6">
                   <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mb-3 text-lg">
-                    產生進度代碼
+                    產生進度代碼 (並自動複製)
                   </button>
                   <div className="relative">
                     <textarea 
@@ -1260,7 +1285,7 @@
 
           {/* 全域浮動輕提示 (Toast) */}
           {toastMsg && (
-            <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] animate-fadeIn whitespace-nowrap">
+            <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-[#2d2a26] text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] animate-fadeIn whitespace-nowrap border-[3px] border-[#fffdfa]">
               {toastMsg}
             </div>
           )}
@@ -1274,3 +1299,5 @@
   </script>
 </body>
 </html>
+
+
