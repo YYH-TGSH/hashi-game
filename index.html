@@ -282,12 +282,11 @@
     };
 
     function HashiGame() {
-      // ===== 畫面路由狀態 (首頁 / 準備連線 / 遊戲中) =====
       const [screen, setScreen] = useState('home'); 
 
-      const [currentLevelId, setCurrentLevelId] = useState(1);
-      const [randomLevelData, setRandomLevelData] = useState(() => generateRandomHashi(LEVELS[0])); 
-      const [bridges, setBridges] = useState(() => generateEmptyBridges(randomLevelData || LEVELS[0]));
+      const [currentLevelId, setCurrentLevelId] = useState(2); 
+      const [randomLevelData, setRandomLevelData] = useState(() => generateRandomHashi(LEVELS[1])); 
+      const [bridges, setBridges] = useState(() => generateEmptyBridges(randomLevelData || LEVELS[1]));
       
       const [history, setHistory] = useState([]); 
       const [isWon, setIsWon] = useState(false);
@@ -308,6 +307,7 @@
       const [roomId, setRoomId] = useState("");
       const [isHost, setIsHost] = useState(false);
       const [myPeerId, setMyPeerId] = useState(null);
+      const [showJoinModal, setShowJoinModal] = useState(false);
       const [tempRoomId, setTempRoomId] = useState("");
       const [tempPlayerName, setTempPlayerName] = useState("");
       const [playersList, setPlayersList] = useState([]); 
@@ -319,12 +319,12 @@
       const clientConnRef = useRef(null);
       const hostConnsRef = useRef({}); 
       const playersRef = useRef([]); 
-      const stateRef = useRef({ bridges: [], levelId: 1, isMultiplayer: false, isHost: false, myPeerId: null, randomLevelData: null, showSolution: false, startTime: Date.now() });
+      const stateRef = useRef({ bridges: [], levelId: 2, isMultiplayer: false, isHost: false, myPeerId: null, randomLevelData: null, showSolution: false, startTime: Date.now() });
 
       const currentLevel = useMemo(() => {
         const base = LEVELS.find(l => l.id === currentLevelId);
         if (base && base.isRandom && randomLevelData) return randomLevelData;
-        return base || randomLevelData || LEVELS[0];
+        return base || randomLevelData || LEVELS[1];
       }, [currentLevelId, randomLevelData]);
 
       useEffect(() => {
@@ -338,6 +338,13 @@
         }, 1000);
         return () => clearInterval(timer);
       }, [startTime, isWon, screen]);
+
+      // 每次打開存檔讀檔介面時，自動清空輸入框
+      useEffect(() => {
+        if (showSaveModal) {
+          setSaveCode("");
+        }
+      }, [showSaveModal]);
 
       useEffect(() => {
         if (screen !== 'game') return;
@@ -391,14 +398,14 @@
 
       const startMultiplayer = (roomCode, playerName) => {
         if (!roomCode || !playerName) return alert("請完整輸入房號與您的暱稱！");
-        const fullRoomId = 'hashi-game-v6-' + roomCode; 
+        const fullRoomId = 'hashi-game-v8-' + roomCode; 
         const peer = new Peer(fullRoomId);
 
         peer.on('open', (id) => {
           setIsHost(true); setIsMultiplayer(true); setRoomId(roomCode); setMyPeerId(id);
           const initialPlayers = [{ id, name: playerName, isHost: true, color: COLORS[0] }];
           setPlayersList(initialPlayers); playersRef.current = initialPlayers;
-          setScreen('game'); // 進入遊戲畫面
+          setScreen('game'); 
           
           peer.on('connection', (conn) => {
             hostConnsRef.current[conn.peer] = conn;
@@ -455,7 +462,7 @@
                
                conn.on('open', () => {
                  setIsHost(false); setIsMultiplayer(true); setRoomId(roomCode);
-                 setScreen('game'); // 進入遊戲畫面
+                 setScreen('game'); 
                  conn.send({ type: 'JOIN', data: { name: playerName } });
                });
 
@@ -724,6 +731,30 @@
         };
         const code = btoa(encodeURIComponent(JSON.stringify(saveData)));
         setSaveCode(code);
+
+        // 複製到剪貼簿機制
+        const textArea = document.createElement("textarea");
+        textArea.value = code;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          alert("✅ 代碼已產生並自動複製到剪貼簿！\n您可以直接貼上至筆記本或通訊軟體保存。");
+        } catch (err) {
+          console.error('複製失敗', err);
+        }
+        document.body.removeChild(textArea);
+      };
+
+      const handleQuickPaste = async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          if(text) {
+             setSaveCode(text);
+          }
+        } catch (err) {
+          alert("無法讀取剪貼簿，請長按輸入框或使用 Ctrl+V 進行手動貼上！");
+        }
       };
 
       const handleLoadCode = () => {
@@ -755,7 +786,7 @@
              if (isHost) broadcastToAll('SYNC_FULL_STATE', payload);
              else if (clientConnRef.current) clientConnRef.current.send({ type: 'NEW_RANDOM_LEVEL', data: payload });
           }
-          alert("讀取成功！");
+          alert("讀取成功！進度已恢復。");
         } catch(e) {
           alert("讀檔失敗，請確認代碼是否完整！");
         }
@@ -765,11 +796,19 @@
       const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.3, 0.4));
       const handleZoomReset = () => setZoomLevel(1);
 
-      // SVG 繪製函數
+      const maxGridX = Math.max(...currentLevel.islands.map(i => i.x), 0); 
+      const maxGridY = Math.max(...currentLevel.islands.map(i => i.y), 0);
+      const gridWidth = currentLevel.width || (maxGridX + 1);
+      const gridHeight = currentLevel.height || (maxGridY + 1);
+
+      const SCALE = 65;
+      const PADDING = 85;
+      const ISLAND_RADIUS = 20;
+
+      const svgWidthBase = (gridWidth - 1) * SCALE + PADDING * 2;
+      const svgHeightBase = (gridHeight - 1) * SCALE + PADDING * 2;
+
       const renderGridLines = () => {
-        const gridWidth = currentLevel.width || 10;
-        const gridHeight = currentLevel.height || 10;
-        const SCALE = 65; const PADDING = 85;
         const lines = [];
         for(let i=0; i<gridWidth; i++) {
           lines.push(<line key={`gv_${i}`} x1={i * SCALE + PADDING} y1={PADDING} x2={i * SCALE + PADDING} y2={(gridHeight - 1) * SCALE + PADDING} stroke="#94a3b8" strokeWidth="2" strokeOpacity="0.8" />);
@@ -781,7 +820,6 @@
       };
 
       const renderSolutionBridge = (bridge) => {
-        const SCALE = 65; const PADDING = 85;
         const islandsMap = {};
         currentLevel.islands.forEach(i => islandsMap[i.id] = i);
         const from = islandsMap[bridge.from];
@@ -809,10 +847,9 @@
             )}
           </g>
         );
-      };
+      }
 
       const renderBridge = (bridge) => {
-        const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 20;
         const islandsMap = {};
         currentLevel.islands.forEach(i => islandsMap[i.id] = i);
         const from = islandsMap[bridge.from];
@@ -822,7 +859,7 @@
         const x1 = from.x * SCALE + PADDING; const y1 = from.y * SCALE + PADDING;
         const x2 = to.x * SCALE + PADDING;   const y2 = to.y * SCALE + PADDING;
 
-        let lineStroke = "#2d2a26"; 
+        let lineStroke = "#1e293b"; 
         let lineOpacity = 1;
 
         if (stateRef.current.isMultiplayer && bridge.count > 0 && bridge.owner && bridge.owner !== stateRef.current.myPeerId) {
@@ -857,7 +894,6 @@
       };
 
       const renderIsland = (island) => {
-        const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 20;
         const cx = island.x * SCALE + PADDING;
         const cy = island.y * SCALE + PADDING;
         const current = islandCurrentCounts[island.id];
@@ -880,35 +916,39 @@
         );
       };
 
-      // ==========================================
-      // UI 渲染區塊
-      // ==========================================
-
-      // 1. 首頁 (文青手繪風)
       if (screen === 'home') {
         return (
-          <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative overflow-hidden animate-fadeIn">
-            <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-10 rounded-2xl shadow-[8px_8px_0px_#2d2a26] max-w-md w-full text-center relative transform -rotate-1 z-10">
-               <h1 className="text-6xl font-black text-[#2d2a26] mb-4 tracking-widest flex justify-center gap-3">
-                  <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform rotate-3 shadow-[4px_4px_0px_#2d2a26]">數</span>
-                  <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform -rotate-2 shadow-[4px_4px_0px_#2d2a26]">橋</span>
-               </h1>
-               <p className="text-slate-600 font-bold mb-10 text-lg border-b-[3px] border-dashed border-slate-300 pb-4">Hashi Puzzle</p>
-               
-               <div className="flex flex-col gap-5">
-                  <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform rotate-1">
-                    👤 單人遊玩
-                  </button>
-                  <button onClick={() => setScreen('join')} className="w-full py-4 bg-emerald-400 border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform -rotate-1">
-                    🌐 多人連線
-                  </button>
-               </div>
+          <div className="h-screen w-screen flex flex-col items-center justify-between p-4 relative overflow-hidden animate-fadeIn">
+            <div className="flex-1 flex flex-col justify-center w-full max-w-md items-center">
+              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-10 rounded-2xl shadow-[8px_8px_0px_#2d2a26] w-full text-center relative transform -rotate-1 z-10">
+                 
+                 <h1 className="text-6xl font-black text-[#2d2a26] mb-6 tracking-widest flex justify-center gap-3">
+                    <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform rotate-3 shadow-[4px_4px_0px_#2d2a26]">數</span>
+                    <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform -rotate-2 shadow-[4px_4px_0px_#2d2a26]">橋</span>
+                 </h1>
+
+                 <div className="inline-block border-[3px] border-dashed border-[#2d2a26] rounded-xl px-6 py-2 mb-8 bg-white shadow-[4px_4px_0px_#2d2a26] transform rotate-2">
+                    <p className="text-[#2d2a26] font-black text-xl tracking-widest">Hashi Puzzle</p>
+                 </div>
+
+                 <div className="flex flex-col gap-5">
+                    <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform rotate-1">
+                      👤 單人遊玩
+                    </button>
+                    <button onClick={() => setScreen('join')} className="w-full py-4 bg-emerald-400 border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform -rotate-1">
+                      🌐 多人連線
+                    </button>
+                 </div>
+              </div>
+            </div>
+            
+            <div className="shrink-0 pb-4 text-[#2d2a26] font-black text-sm opacity-60 tracking-wider z-10">
+              葉大帥@2026
             </div>
           </div>
         );
       }
 
-      // 2. 準備連線畫面
       if (screen === 'join') {
         return (
           <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative animate-fadeIn">
@@ -936,18 +976,10 @@
         );
       }
 
-      // 3. 遊戲畫面
-      const gridWidth = currentLevel.width || 10;
-      const gridHeight = currentLevel.height || 10;
-      const SCALE = 65; const PADDING = 85;
-      const svgWidthBase = (gridWidth - 1) * SCALE + PADDING * 2;
-      const svgHeightBase = (gridHeight - 1) * SCALE + PADDING * 2;
-
       return (
         <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans overflow-hidden animate-fadeIn">
           <div className="w-full max-w-[1200px] bg-[#fffdfa] rounded-xl border-4 border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] flex flex-col h-full relative z-10 overflow-hidden">
             
-            {/* 上方控制面板 */}
             <div className={`bg-[#ffcc00] border-b-4 border-[#2d2a26] text-[#2d2a26] shrink-0 z-20 transition-all duration-300 ease-in-out ${isHeaderCollapsed ? 'p-2 flex flex-col md:flex-row gap-2 items-center justify-between' : 'p-3 md:p-5 flex flex-col gap-3'}`}>
               <div className="flex justify-between items-center w-full flex-wrap gap-2">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -1011,8 +1043,8 @@
               </div>
               
               {!isHeaderCollapsed && (
-                <div>
-                  <div className="bg-white border-[3px] border-[#2d2a26] rounded-xl p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_#2d2a26] flex flex-col md:flex-row gap-4 mb-2">
+                <div className="w-full flex flex-col gap-1">
+                  <div className="bg-white border-[3px] border-[#2d2a26] rounded-xl p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_#2d2a26] flex flex-col md:flex-row gap-4 mb-2 animate-fadeIn">
                     <div className="flex-1">
                       <h3 className="text-base md:text-lg font-black mb-1 md:mb-2 border-b-[3px] border-[#ffcc00] inline-block pb-1">📜 遊戲四大規則</h3>
                       <ol className="list-decimal list-outside ml-5 space-y-1 md:space-y-1.5 text-xs md:text-sm leading-relaxed font-bold">
@@ -1028,13 +1060,13 @@
                       <p className="text-slate-700 text-xs md:text-sm font-bold leading-relaxed">{currentLevel.description}</p>
                       {isMultiplayer && (
                         <div className="mt-2 text-xs text-emerald-800 font-bold bg-emerald-200 p-1.5 rounded-lg border-2 border-emerald-500 shadow-sm">
-                          多人模式中，已停用「上一步」功能以防同學畫面互搶。
+                          多人模式中，已停用「復原」功能以防同學畫面互搶。
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 items-center mt-2 w-full">
+                  <div className="flex flex-wrap gap-2 items-center mt-2 w-full animate-fadeIn">
                     <span className="font-bold text-[#2d2a26] mr-1 text-sm md:text-base hidden md:inline">選擇：</span>
                     <select
                       disabled={isMultiplayer && !isHost}
@@ -1148,6 +1180,31 @@
             </button>
           )}
 
+          {showJoinModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+              <div className="bg-white border-4 border-slate-800 rounded-2xl p-6 shadow-[10px_10px_0px_rgba(0,0,0,1)] w-full max-w-sm animate-fadeIn">
+                <h2 className="text-2xl font-black text-slate-800 mb-2 border-b-4 border-[#ffcc00] inline-block pb-1">🌐 多人連線</h2>
+                <p className="text-sm font-bold text-slate-600 mb-4">第一個輸入房號的人將成為「主機👑」，其他人輸入相同房號即可加入房間。</p>
+                
+                <div className="flex flex-col gap-3 mb-5">
+                  <div>
+                    <label className="block text-slate-800 font-bold text-sm mb-1">您的暱稱：</label>
+                    <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={(e) => setTempPlayerName(e.target.value)} className="w-full border-2 border-slate-800 rounded-lg p-2 font-bold text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] outline-none focus:bg-yellow-50" />
+                  </div>
+                  <div>
+                    <label className="block text-slate-800 font-bold text-sm mb-1">欲建立/加入的房號：</label>
+                    <input type="text" placeholder="例如：8888" value={tempRoomId} onChange={(e) => setTempRoomId(e.target.value)} className="w-full border-2 border-slate-800 rounded-lg p-2 font-bold text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] outline-none focus:bg-yellow-50" />
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={() => setShowJoinModal(false)} className="flex-1 py-2 bg-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100">取消</button>
+                  <button onClick={() => { startMultiplayer(tempRoomId.trim(), tempPlayerName.trim()); setShowJoinModal(false); }} className="flex-1 py-2 bg-emerald-500 text-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-emerald-600">進入房間</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {showSaveModal && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
               <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_#2d2a26] w-full max-w-md animate-fadeIn rotate-1">
@@ -1156,15 +1213,23 @@
                 
                 <div className="mb-6">
                   <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mb-3 text-lg">
-                    產生進度代碼
+                    產生進度代碼 (並自動複製)
                   </button>
-                  <textarea 
-                    value={saveCode} 
-                    onChange={(e) => setSaveCode(e.target.value)} 
-                    placeholder="點擊上方生成，或是將舊代碼貼在此處" 
-                    rows="4" 
-                    className="w-full border-[3px] border-[#2d2a26] rounded-xl p-3 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white"
-                  />
+                  <div className="relative">
+                    <textarea 
+                      value={saveCode} 
+                      onChange={(e) => setSaveCode(e.target.value)} 
+                      placeholder="點擊上方生成，或是將舊代碼貼在此處" 
+                      rows="4" 
+                      className="w-full border-[3px] border-[#2d2a26] rounded-xl p-3 pb-12 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white"
+                    />
+                    <button 
+                      onClick={handleQuickPaste}
+                      className="absolute bottom-3 right-3 bg-[#ffcc00] text-[#2d2a26] px-3 py-1.5 rounded-lg text-sm font-black border-[2px] border-[#2d2a26] hover:bg-[#e6b800] shadow-[2px_2px_0px_#2d2a26] transition-all active:translate-y-[1px] active:translate-x-[1px] active:shadow-none"
+                    >
+                      📋 快速貼上
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex gap-4">
