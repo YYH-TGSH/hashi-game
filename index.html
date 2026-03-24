@@ -190,7 +190,6 @@
         }
       }
 
-      // 初步結算所有島嶼的數字
       solutionBridges.forEach(b => {
         let fromNode = islands.find(i => i.id === b.from);
         let toNode = islands.find(i => i.id === b.to);
@@ -206,7 +205,6 @@
       while (evenIslands.length > maxEvenCount && adjustAttempts < 500) {
         adjustAttempts++;
         
-        // 優先找一條連接「兩個偶數島」的橋
         let candidateBridges = solutionBridges.filter(b => {
           let fromNode = islands.find(i => i.id === b.from);
           let toNode = islands.find(i => i.id === b.to);
@@ -217,7 +215,6 @@
         if (candidateBridges.length > 0) {
            targetBridge = candidateBridges[Math.floor(Math.random() * candidateBridges.length)];
         } else {
-           // 若找不到，則找至少連接「一個偶數島」的橋來打亂狀態
            candidateBridges = solutionBridges.filter(b => {
              let fromNode = islands.find(i => i.id === b.from);
              let toNode = islands.find(i => i.id === b.to);
@@ -229,7 +226,6 @@
         }
 
         if (targetBridge) {
-          // 如果原本是 1 條橋就變 2 條，如果是 2 條橋就變 1 條
           let diff = targetBridge.count === 1 ? 1 : -1;
           targetBridge.count += diff;
           let fromNode = islands.find(i => i.id === targetBridge.from);
@@ -238,10 +234,8 @@
           toNode.req += diff;
         }
 
-        // 重新檢測偶數島的數量
         evenIslands = islands.filter(i => i.req % 2 === 0);
       }
-      // -----------------------------------------------------------
 
       return {
         id: levelDef.id,
@@ -790,16 +784,16 @@
           <g key={`sol_${bridge.from}_${bridge.to}`} className="pointer-events-none opacity-60">
             {bridge.count === 1 && ( <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth="8" strokeLinecap="round" className="solution-line" /> )}
             {bridge.count === 2 && bridge.type === 'h' && (
-              <g>
+              <React.Fragment>
                 <line x1={x1} y1={y1 - 6} x2={x2} y2={y2 - 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
                 <line x1={x1} y1={y1 + 6} x2={x2} y2={y2 + 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </g>
+              </React.Fragment>
             )}
             {bridge.count === 2 && bridge.type === 'v' && (
-              <g>
+              <React.Fragment>
                 <line x1={x1 - 6} y1={y1} x2={x2 - 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
                 <line x1={x1 + 6} y1={y1} x2={x2 + 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </g>
+              </React.Fragment>
             )}
           </g>
         );
@@ -834,16 +828,16 @@
             
             {bridge.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />}
             {bridge.count === 2 && bridge.type === 'h' && (
-              <g>
+              <React.Fragment>
                 <line x1={x1} y1={y1 - 5} x2={x2} y2={y2 - 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
                 <line x1={x1} y1={y1 + 5} x2={x2} y2={y2 + 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </g>
+              </React.Fragment>
             )}
             {bridge.count === 2 && bridge.type === 'v' && (
-              <g>
+              <React.Fragment>
                 <line x1={x1 - 5} y1={y1} x2={x2 - 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
                 <line x1={x1 + 5} y1={y1} x2={x2 + 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </g>
+              </React.Fragment>
             )}
           </g>
         );
@@ -907,9 +901,9 @@
                       {LEVELS.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
                     </select>
 
-                    <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 py-1 bg-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100">↩️</button>
-                    {(!isMultiplayer || isHost) && <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-red-600">🔄</button>}
-                    <button onClick={() => setShowSaveModal(true)} className="px-2 py-1 bg-blue-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-blue-600">💾</button>
+                    <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 py-1 bg-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100" title="復原">↩️</button>
+                    <button onClick={handleReset} disabled={isMultiplayer && !isHost} className="px-2 py-1 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-red-600" title="重置">🔄</button>
+                    <button onClick={() => setShowSaveModal(true)} className="px-2 py-1 bg-blue-500 text-white border-2 border-slate-800 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-blue-600" title="存檔/讀檔">💾</button>
                     <button onClick={() => setIsHeaderCollapsed(false)} className="ml-auto bg-slate-800 text-white px-2 py-1 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700">🔽 展開</button>
                   </div>
                 )}
@@ -918,7 +912,7 @@
                   <div className="flex items-center gap-2 flex-wrap justify-end mt-2 md:mt-0 w-full md:w-auto">
                     <button 
                       onClick={() => setShowSaveModal(true)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white border-2 border-slate-800 px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1 hidden md:flex"
+                      className="bg-blue-500 hover:bg-blue-600 text-white border-2 border-slate-800 px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1"
                     >
                       💾 <span className="hidden md:inline">存檔/讀檔</span><span className="md:hidden">存檔</span>
                     </button>
@@ -988,14 +982,12 @@
                       </button>
 
                       <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 md:px-4 py-1.5 bg-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                        ↩️ 復原
+                        ↩️ <span className="hidden md:inline">復原</span>
                       </button>
                       
-                      {(!isMultiplayer || isHost) && (
-                        <button onClick={handleReset} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-red-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                          🔄 重置
-                        </button>
-                      )}
+                      <button onClick={handleReset} disabled={isMultiplayer && !isHost} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-slate-800 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] disabled:opacity-50 disabled:shadow-none hover:bg-red-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
+                        🔄 <span className="hidden md:inline">重置</span>
+                      </button>
                     </div>
                   </div>
                 </React.Fragment>
