@@ -291,19 +291,22 @@
       const playerIdRef = useRef(Math.random().toString(36).substring(2, 12));
       const myId = playerIdRef.current;
 
-      // 確保初始化的時候，地圖與橋樑的資料來源完全一致
+      // === 基本狀態 ===
+      const [user, setUser] = useState(null);
+      const [authError, setAuthError] = useState(""); // 記錄 Firebase Auth 錯誤
+      
+      const [screen, setScreen] = useState('home');
+      const [engine, setEngine] = useState('none');
+      const [currentLevelId, setCurrentLevelId] = useState(2); 
+      
+      // 確保初始化地圖與橋樑的資料來源完全一致
       const initialDataRef = useRef(null);
       if (!initialDataRef.current) {
         initialDataRef.current = generateRandomHashi(LEVELS[1]);
       }
-
-      // === 基本狀態 ===
-      const [user, setUser] = useState(null);
-      const [screen, setScreen] = useState('home');
-      const [engine, setEngine] = useState('none');
-      const [currentLevelId, setCurrentLevelId] = useState(2); 
       const [randomLevelData, setRandomLevelData] = useState(initialDataRef.current);
       const [bridges, setBridges] = useState(() => generateEmptyBridges(initialDataRef.current));
+      
       const [history, setHistory] = useState([]);
       const [isWon, setIsWon] = useState(false);
       const [hideVictoryModal, setHideVictoryModal] = useState(false);
@@ -339,7 +342,7 @@
       const lastPinchDist = useRef(null);
       const stateRef = useRef({ bridges: [], levelId: 2, randomLevelData: null, showSolution: false, startTime: Date.now() });
 
-      // === 初始化 Firebase Auth ===
+      // === 初始化 Firebase Auth (加入詳細錯誤捕捉) ===
       useEffect(function() {
         const initAuth = async function() {
           try {
@@ -348,7 +351,10 @@
             } else {
               await signInAnonymously(auth);
             }
-          } catch(err) { console.error("Firebase 登入失敗", err); }
+          } catch(err) { 
+            console.error("Firebase 登入失敗", err); 
+            setAuthError(err.code || err.message);
+          }
         };
         initAuth();
         onAuthStateChanged(auth, function(u) { if(u) setUser(u); });
@@ -560,7 +566,10 @@
       };
 
       const setupFirebase = async (rId, pName, isCreating) => {
+        // 先攔截是否因為忘記開匿名登入而噴錯
+        if (authError) { setIsConnecting(false); return showToast("⚠️ Firebase 設定錯誤: " + authError + " (請確認已開啟 Anonymous 匿名登入)"); }
         if (!user) { setIsConnecting(false); return showToast("⚠️ 伺服器連線中，請稍後"); }
+        
         const safeAppId = typeof __app_id !== 'undefined' && __app_id ? __app_id : 'default-app-id';
         const rDoc = doc(db, 'artifacts', safeAppId, 'public', 'data', 'rooms', rId);
         roomRef.current = rDoc;
@@ -606,8 +615,8 @@
           }, function(err) { showToast("⚠️ 網路波動，同步中..."); });
         } catch(e) { 
             setIsConnecting(false); switchToOffline();
-            if (e.message === "TIMEOUT") showToast("⚠️ 連線逾時！請確認 Firebase 後台已開放 Firestore 讀寫權限");
-            else showToast("⚠️ 雲端連線失敗，請檢查網路或權限");
+            if (e.message === "TIMEOUT") showToast("⚠️ 連線逾時！請確認 Firebase 後台已開放 Firestore 的寫入權限 (Rules)");
+            else showToast("⚠️ 雲端連線失敗: " + e.message);
         }
       };
 
