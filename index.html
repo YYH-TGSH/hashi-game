@@ -6,16 +6,13 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="數橋">
-  <title>數橋</title>
+  <title>數橋 - Hashi Puzzle</title>
   
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ffcc00%22 rx=%2220%22/><text y=%2272%22 x=%2216%22 font-size=%2265%22>🌉</text></svg>">
-  <link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ffcc00%22/><text y=%2272%22 x=%2216%22 font-size=%2265%22>🌉</text></svg>">
   
   <script src="https://cdn.tailwindcss.com"></script>
-  
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
   <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
@@ -42,6 +39,13 @@
     .animate-popUp {
       animation: popUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
+    @keyframes slideUpFade {
+      0% { transform: translate(-50%, 20px); opacity: 0; }
+      100% { transform: translate(-50%, 0); opacity: 1; }
+    }
+    .animate-slideUpFade {
+      animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
     .custom-scrollbar::-webkit-scrollbar {
       width: 12px; height: 12px;
     }
@@ -67,352 +71,335 @@
 
   <div id="root"></div>
 
+  <!-- 雲端引擎初始化 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    window.firebaseAPI = {
+      initializeApp: initializeApp,
+      getAuth: getAuth, 
+      signInAnonymously: signInAnonymously,
+      onAuthStateChanged: onAuthStateChanged,
+      getFirestore: getFirestore, 
+      doc: doc, 
+      setDoc: setDoc, 
+      getDoc: getDoc, 
+      onSnapshot: onSnapshot, 
+      updateDoc: updateDoc, 
+      collection: collection, 
+      deleteDoc: deleteDoc
+    };
+  </script>
+
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
+    const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, deleteDoc } = window.firebaseAPI;
+
+    // === Firebase 配置 ===
+    const providedConfig = {
+      apiKey: "AIzaSyCbw8MNh616_OIBfoyh2gIhQQhsgsN8rAc",
+      authDomain: "hashi-game-2c006.firebaseapp.com",
+      databaseURL: "https://hashi-game-2c006-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "hashi-game-2c006",
+      storageBucket: "hashi-game-2c006.firebasestorage.app",
+      messagingSenderId: "732616383715",
+      appId: "1:732616383715:web:f31a0f7f24a08f3b78b9d6"
+    };
+
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : providedConfig;
+    const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'hashi-hybrid-v25';
+    
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
     const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
     const LEVELS = [
-      { id: 1, name: "🎲 隨機 (5x5 幼幼班)", isRandom: true, width: 5, height: 5 },
-      { id: 2, name: "🎲 隨機 (10x10 標準)", isRandom: true, width: 10, height: 10 },
-      { id: 3, name: "🎲 隨機 (10x20 手機直式)", isRandom: true, width: 10, height: 20 },
-      { id: 4, name: "🎲 隨機 (15x15 魔王)", isRandom: true, width: 15, height: 15 },
-      { id: 5, name: "🎲 隨機 (20x20 史詩)", isRandom: true, width: 20, height: 20 }
+      { id: 1, name: "🎲 隨機 (5x5 幼幼班)", width: 5, height: 5, description: "最簡單的暖身關卡，試著連連看。" },
+      { id: 2, name: "🎲 隨機 (10x10 標準)", width: 10, height: 10, description: "標準難度，注意所有島嶼都要連通喔！" },
+      { id: 3, name: "🎲 隨機 (10x20 手機直式)", width: 10, height: 20, description: "適合手機滑動的長條形地圖。" },
+      { id: 4, name: "🎲 隨機 (15x15 魔王)", width: 15, height: 15, description: "極具挑戰性！找尋角落的大數字作為突破口。" },
+      { id: 5, name: "🎲 隨機 (20x20 史詩)", width: 20, height: 20, description: "超大地圖，請善用右下角的畫面縮放功能。" }
     ];
 
-    const generateRandomHashi = (levelDef) => {
-      const width = levelDef.width;
-      const height = levelDef.height;
-      let islands = [];
-      let solutionBridges = [];
-      let grid = Array(height).fill(null).map(() => Array(width).fill(null));
-
+    // ==========================================
+    // 智慧逆向生成演算法 (高密度版)
+    // ==========================================
+    function generateRandomHashi(levelDef) {
+      const width = levelDef.width, height = levelDef.height;
+      let islands = [], topologyBridges = [];
+      let grid = Array(height).fill(null).map(function() { return Array(width).fill(null); });
       let islandId = 1;
-      let startX = Math.floor(width / 2) + Math.floor(Math.random() * 3) - 1; 
-      let startY = Math.floor(height / 2) + Math.floor(Math.random() * 3) - 1;
+      
+      // 起始點
+      let startX = Math.floor(width / 2), startY = Math.floor(height / 2);
       let firstIsland = { id: islandId++, x: startX, y: startY, req: 0 };
       islands.push(firstIsland);
       grid[startY][startX] = { type: 'island', island: firstIsland };
-
+      
       const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; 
       const area = width * height;
       
-      let targetIslandCount = 12; 
-      let MIN_BRIDGE_LEN = 3;
-      
-      if (area <= 25) { targetIslandCount = 5; MIN_BRIDGE_LEN = 2; }
-      else if (area <= 100) { targetIslandCount = 12; MIN_BRIDGE_LEN = 3; }
-      else if (area <= 200) { targetIslandCount = 22; MIN_BRIDGE_LEN = 3; } 
-      else if (area <= 225) { targetIslandCount = 26; MIN_BRIDGE_LEN = 3; }
-      else { targetIslandCount = 45; MIN_BRIDGE_LEN = 3; }
-
+      // 根據面積計算合理的高密度目標 (經典數橋密度約為 20%~25%)
+      let targetIslandCount = Math.floor(area * 0.22);
       let maxAttempts = area * 20;
       let attempts = 0;
       
+      // 階段一：向外隨機延伸樹狀拓撲 (確保完全連通)
       while (islands.length < targetIslandCount && attempts < maxAttempts) {
         attempts++;
-        
-        if (Math.random() < 0.15 && solutionBridges.length > 0) {
-          let b = solutionBridges[Math.floor(Math.random() * solutionBridges.length)];
-          if (b.count < 2) b.count = 2;
-          continue;
-        }
-
         let source = islands[Math.floor(Math.random() * islands.length)];
         let dir = dirs[Math.floor(Math.random() * dirs.length)];
         
-        let d = 1;
-        let hitIsland = null;
-        let max_d = 0;
-        
-        while(true) {
-            let px = source.x + dir[0] * d;
-            let py = source.y + dir[1] * d;
-            
-            if (px < 1 || px >= width - 1 || py < 1 || py >= height - 1) {
-                if (px < 0 || px >= width || py < 0 || py >= height) break;
-                if (Math.random() > 0.1) break; 
+        let dist = 1;
+        let hitType = null;
+        let hitObj = null;
+
+        // 偵測前方路線
+        while (true) {
+            let nx = source.x + dir[0] * dist;
+            let ny = source.y + dir[1] * dist;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+                hitType = 'wall'; break;
             }
-            
-            let cell = grid[py][px];
-            if (cell) {
-                if (cell.type === 'island') {
-                    hitIsland = cell.island;
-                    max_d = d;
-                } else if (cell.type === 'bridge') {
-                    max_d = d - 1; 
-                }
+            if (grid[ny][nx]) {
+                hitType = grid[ny][nx].type;
+                if (hitType === 'island') hitObj = grid[ny][nx].island;
                 break;
             }
-            max_d = d;
-            d++;
+            dist++;
         }
 
-        if (max_d < MIN_BRIDGE_LEN && !hitIsland) continue; 
+        if (hitType === 'bridge') continue; // 遇到現有橋樑不跨越
 
-        let target_d;
+        let target_d = 0;
         let targetIslandObj = null;
 
-        if (hitIsland && max_d >= MIN_BRIDGE_LEN) {
-            if (Math.random() < 0.2) {
-                target_d = max_d;
-                targetIslandObj = hitIsland;
-            } else {
-                target_d = Math.floor(Math.random() * (max_d - MIN_BRIDGE_LEN + 1)) + MIN_BRIDGE_LEN;
+        if (hitType === 'island') {
+            if (dist < 2) continue; // 必須有至少一格空隙
+            if (Math.random() < 0.6) { // 60% 機率連向已存在的島
+                target_d = dist;
+                targetIslandObj = hitObj;
+            } else continue;
+        } else if (hitType === 'wall') {
+            if (dist < 3) continue; // 必須有足夠空間產出新島
+            
+            // 隨機選擇距離，傾向產生較短的橋以提高密度
+            let max_possible = dist - 1;
+            let pool = [];
+            for (let i = 2; i <= max_possible; i++) {
+                pool.push(i);
+                if (i <= 3) pool.push(i); // 加權短橋 (2格、3格)
             }
-        } else if (max_d >= MIN_BRIDGE_LEN) {
-            target_d = Math.floor(Math.random() * (max_d - MIN_BRIDGE_LEN + 1)) + MIN_BRIDGE_LEN;
-        } else {
-            continue;
+            target_d = pool[Math.floor(Math.random() * pool.length)];
         }
 
-        let targetX = source.x + dir[0] * target_d;
-        let targetY = source.y + dir[1] * target_d;
+        if (!target_d) continue;
+
+        let newX = source.x + dir[0] * target_d;
+        let newY = source.y + dir[1] * target_d;
 
         if (!targetIslandObj) {
+            // 防呆：九宮格內不能有其他島嶼，保持經典數橋的視覺留白
             let tooClose = false;
-            for (let i = 0; i < islands.length; i++) {
-                let isl = islands[i];
-                let dx = Math.abs(isl.x - targetX);
-                let dy = Math.abs(isl.y - targetY);
-                if (dx <= 1 && dy <= 1) { tooClose = true; break; }
-                if ((dx === 1 && dy === 2) || (dx === 2 && dy === 1)) {
-                    if (Math.random() < 0.8) { tooClose = true; break; } 
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    let checkX = newX + dx, checkY = newY + dy;
+                    if (checkX >= 0 && checkX < width && checkY >= 0 && checkY < height) {
+                        if (grid[checkY][checkX] && grid[checkY][checkX].type === 'island') tooClose = true;
+                    }
                 }
             }
             if (tooClose) continue;
 
-            targetIslandObj = { id: islandId++, x: targetX, y: targetY, req: 0 };
+            targetIslandObj = { id: islandId++, x: newX, y: newY, req: 0 };
             islands.push(targetIslandObj);
-            grid[targetY][targetX] = { type: 'island', island: targetIslandObj };
+            grid[newY][newX] = { type: 'island', island: targetIslandObj };
         }
 
-        let existingBridge = solutionBridges.find(b =>
-          (b.from === source.id && b.to === targetIslandObj.id) ||
-          (b.to === source.id && b.from === targetIslandObj.id)
-        );
-
-        if (existingBridge) {
-           if (existingBridge.count === 1 && Math.random() < 0.25) {
-               existingBridge.count = 2;
-           }
-           continue;
-        }
-
-        let newBridge = {
-          from: source.id,
-          to: targetIslandObj.id,
-          count: Math.random() < 0.55 ? 1 : 2, 
-          type: dir[0] !== 0 ? 'h' : 'v'
-        };
-        solutionBridges.push(newBridge);
-        
-        for (let i = 1; i < target_d; i++) {
-            let px = source.x + dir[0] * i;
-            let py = source.y + dir[1] * i;
-            grid[py][px] = { type: 'bridge', bridge: newBridge };
-        }
-      }
-
-      solutionBridges.forEach(b => {
-        let fromNode = islands.find(i => i.id === b.from);
-        let toNode = islands.find(i => i.id === b.to);
-        fromNode.req += b.count;
-        toNode.req += b.count;
-      });
-
-      let evenIslands = islands.filter(i => i.req % 2 === 0);
-      let adjustAttempts = 0;
-      const maxEvenCount = Math.floor(islands.length * 0.45); 
-      
-      while (evenIslands.length > maxEvenCount && adjustAttempts < 500) {
-        adjustAttempts++;
-        let candidateBridges = solutionBridges.filter(b => {
-          let fromNode = islands.find(i => i.id === b.from);
-          let toNode = islands.find(i => i.id === b.to);
-          return fromNode.req % 2 === 0 && toNode.req % 2 === 0;
+        let existingBridge = topologyBridges.find(function(b) {
+          return (b.from === source.id && b.to === targetIslandObj.id) || (b.to === source.id && b.from === targetIslandObj.id);
         });
 
-        let targetBridge = null;
-        if (candidateBridges.length > 0) {
-           targetBridge = candidateBridges[Math.floor(Math.random() * candidateBridges.length)];
-        } else {
-           candidateBridges = solutionBridges.filter(b => {
-             let fromNode = islands.find(i => i.id === b.from);
-             let toNode = islands.find(i => i.id === b.to);
-             return fromNode.req % 2 === 0 || toNode.req % 2 === 0;
-           });
-           if (candidateBridges.length > 0) {
-             targetBridge = candidateBridges[Math.floor(Math.random() * candidateBridges.length)];
-           }
+        // 寫入無數字骨架
+        if (!existingBridge) {
+            let newBridge = { from: source.id, to: targetIslandObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 };
+            topologyBridges.push(newBridge);
+            for (let j = 1; j < target_d; j++) grid[source.y + dir[1] * j][source.x + dir[0] * j] = { type: 'bridge' };
         }
-
-        if (targetBridge) {
-          let diff = targetBridge.count === 2 ? -1 : 1;
-          targetBridge.count += diff;
-          let fromNode = islands.find(i => i.id === targetBridge.from);
-          let toNode = islands.find(i => i.id === targetBridge.to);
-          fromNode.req += diff;
-          toNode.req += diff;
-        }
-        evenIslands = islands.filter(i => i.req % 2 === 0);
       }
-      
-      islands = islands.filter(i => i.req > 0);
 
-      return {
-        id: levelDef.id,
-        name: levelDef.name,
-        width: width,
-        height: height,
-        description: "系統隨機產生！如果卡住了，可以點擊「顯示解答」。",
-        isRandom: true,
-        islands: islands,
-        solution: solutionBridges
-      };
-    };
-
-    const generateEmptyBridges = (level) => {
-      let pb = [];
-      let bridgeId = 1;
-      const islands = level.islands;
+      // 階段二：交叉連接掃描 (極大化網路的密集度與迴路)
       for (let i = 0; i < islands.length; i++) {
-        let a = islands[i];
-        let rightNeighbor = null;
-        for (let j = 0; j < islands.length; j++) {
-          let b = islands[j];
-          if (b.y === a.y && b.x > a.x) {
-            if (!rightNeighbor || b.x < rightNeighbor.x) rightNeighbor = b;
+          let source = islands[i];
+          for (let d = 0; d < dirs.length; d++) {
+              let dir = dirs[d];
+              let dist = 1;
+              let hitObj = null;
+              while (true) {
+                  let nx = source.x + dir[0] * dist;
+                  let ny = source.y + dir[1] * dist;
+                  if (nx < 0 || nx >= width || ny < 0 || ny >= height) break;
+                  if (grid[ny][nx]) {
+                      if (grid[ny][nx].type === 'island') hitObj = grid[ny][nx].island;
+                      break; 
+                  }
+                  dist++;
+              }
+              if (hitObj && dist >= 2) {
+                  let existingBridge = topologyBridges.find(function(b) {
+                      return (b.from === source.id && b.to === hitObj.id) || (b.to === source.id && b.from === hitObj.id);
+                  });
+                  // 60% 機率將「看得到」的島嶼連接起來
+                  if (!existingBridge && Math.random() < 0.6) {
+                      topologyBridges.push({ from: source.id, to: hitObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 });
+                      for (let j = 1; j < dist; j++) grid[source.y + dir[1] * j][source.x + dir[0] * j] = { type: 'bridge' };
+                  }
+              }
           }
-        }
-        if (rightNeighbor) pb.push({ id: bridgeId++, from: a.id, to: rightNeighbor.id, type: 'h', count: 0, owner: null });
+      }
 
-        let bottomNeighbor = null;
-        for (let j = 0; j < islands.length; j++) {
-          let b = islands[j];
-          if (b.x === a.x && b.y > a.y) {
-            if (!bottomNeighbor || b.y < bottomNeighbor.y) bottomNeighbor = b;
-          }
+      // 階段三：自然分派 1 條 或 2 條橋，並計算需求數字
+      let solutionBridges = [];
+      topologyBridges.forEach(function(b) {
+          b.count = Math.random() < 0.5 ? 1 : 2; // 各 50% 機率，產生常態分佈
+          solutionBridges.push(b);
+      });
+
+      solutionBridges.forEach(function(b) {
+        let fromNode = islands.find(function(i) { return i.id === b.from; });
+        let toNode = islands.find(function(i) { return i.id === b.to; });
+        if (fromNode) fromNode.req += b.count;
+        if (toNode) toNode.req += b.count;
+      });
+
+      islands = islands.filter(function(i) { return i.req > 0; });
+
+      return { 
+        id: levelDef.id, 
+        name: levelDef.name, 
+        width: width, 
+        height: height, 
+        description: levelDef.description, 
+        isRandom: true, 
+        islands: islands, 
+        solution: solutionBridges 
+      };
+    }
+
+    function generateEmptyBridges(level) {
+      let pb = []; let bridgeId = 1;
+      const isl = (level && level.islands) ? level.islands : [];
+      for (let i = 0; i < isl.length; i++) {
+        let a = isl[i]; let rN = null, bN = null;
+        for (let j = 0; j < isl.length; j++) {
+          let b = isl[j];
+          if (b.y === a.y && b.x > a.x) if (!rN || b.x < rN.x) rN = b;
+          if (b.x === a.x && b.y > a.y) if (!bN || b.y < bN.y) bN = b;
         }
-        if (bottomNeighbor) pb.push({ id: bridgeId++, from: a.id, to: bottomNeighbor.id, type: 'v', count: 0, owner: null });
+        if (rN) pb.push({ id: bridgeId++, from: a.id, to: rN.id, type: 'h', count: 0 });
+        if (bN) pb.push({ id: bridgeId++, from: a.id, to: bN.id, type: 'v', count: 0 });
       }
       return pb;
-    };
+    }
 
-    const formatTime = (secs) => {
-      const m = String(Math.floor(secs / 60)).padStart(2, '0');
-      const s = String(secs % 60).padStart(2, '0');
-      return `${m}:${s}`;
-    };
+    // ==========================================
+    // React UI 與遊戲引擎
+    // ==========================================
 
     function HashiGame() {
-      const [screen, setScreen] = useState('home'); 
+      // 輔助函式：時間格式化
+      function formatTime(secs) {
+        const m = String(Math.floor(secs / 60)).padStart(2, '0');
+        const s = String(secs % 60).padStart(2, '0');
+        return m + ":" + s;
+      }
 
-      const [currentLevelId, setCurrentLevelId] = useState(2); 
-      const [randomLevelData, setRandomLevelData] = useState(() => generateRandomHashi(LEVELS[1])); 
-      const [bridges, setBridges] = useState(() => generateEmptyBridges(randomLevelData || LEVELS[1]));
-      
-      const [history, setHistory] = useState([]); 
+      // === 狀態管理 ===
+      const [user, setUser] = useState(null);
+      const [screen, setScreen] = useState('home');
+      const [engine, setEngine] = useState('none');
+      const [currentLevelId, setCurrentLevelId] = useState(2);
+      const [randomLevelData, setRandomLevelData] = useState(null);
+      const [bridges, setBridges] = useState([]);
+      const [history, setHistory] = useState([]);
       const [isWon, setIsWon] = useState(false);
-      const [message, setMessage] = useState("");
-      const [toastMsg, setToastMsg] = useState("");
       const [hideVictoryModal, setHideVictoryModal] = useState(false);
-      const [showSolution, setShowSolution] = useState(false); 
+      const [toastMsg, setToastMsg] = useState("");
       
-      const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
-      const [zoomLevel, setZoomLevel] = useState(1);
-
       const [startTime, setStartTime] = useState(Date.now());
       const [elapsedTime, setElapsedTime] = useState(0);
-
+      const [zoomLevel, setZoomLevel] = useState(1);
+      const [showSolution, setShowSolution] = useState(false);
+      const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
       const [showSaveModal, setShowSaveModal] = useState(false);
       const [saveCode, setSaveCode] = useState("");
 
-      const [isMultiplayer, setIsMultiplayer] = useState(false);
+      // 多人連線狀態
       const [roomId, setRoomId] = useState("");
       const [isHost, setIsHost] = useState(false);
-      const [myPeerId, setMyPeerId] = useState(null);
-      const [showJoinModal, setShowJoinModal] = useState(false);
       const [tempRoomId, setTempRoomId] = useState("");
       const [tempPlayerName, setTempPlayerName] = useState("");
-      const [playersList, setPlayersList] = useState([]); 
-
-      const zoomContainerRef = useRef(null);
-      const lastPinchDist = useRef(null);
+      const [stableMode, setStableMode] = useState(false); 
+      const [titleClicks, setTitleClicks] = useState(0);
+      const [playersList, setPlayersList] = useState([]);
 
       const peerRef = useRef(null);
-      const clientConnRef = useRef(null);
-      const hostConnsRef = useRef({}); 
-      const playersRef = useRef([]); 
-      const stateRef = useRef({ bridges: [], levelId: 2, isMultiplayer: false, isHost: false, myPeerId: null, randomLevelData: null, showSolution: false, startTime: Date.now() });
+      const connRef = useRef(null);
+      const roomRef = useRef(null);
+      const unsubRef = useRef(null);
+      const zoomContainerRef = useRef(null);
+      const lastPinchDist = useRef(null);
+      const stateRef = useRef({ bridges: [], randomLevelData: null, showSolution: false, startTime: Date.now() });
 
-      const currentLevel = useMemo(() => {
-        const base = LEVELS.find(l => l.id === currentLevelId);
-        if (base && base.isRandom && randomLevelData) return randomLevelData;
-        return base || randomLevelData || LEVELS[1];
-      }, [currentLevelId, randomLevelData]);
+      // === 初始化 ===
+      useEffect(function() {
+        onAuthStateChanged(auth, function(u) { if(u) setUser(u); });
+        signInAnonymously(auth).catch(function(err) { console.error("Firebase登入失敗", err); });
+        
+        const initData = generateRandomHashi(LEVELS[1]);
+        setRandomLevelData(initData);
+        setBridges(generateEmptyBridges(initData));
+      }, []);
 
-      useEffect(() => {
-        stateRef.current = { bridges, levelId: currentLevelId, isMultiplayer, isHost, myPeerId, randomLevelData, showSolution, startTime };
-      }, [bridges, currentLevelId, isMultiplayer, isHost, myPeerId, randomLevelData, showSolution, startTime]);
+      useEffect(function() {
+        stateRef.current = { bridges: bridges, randomLevelData: randomLevelData, showSolution: showSolution, startTime: startTime };
+      }, [bridges, randomLevelData, showSolution, startTime]);
 
-      useEffect(() => {
-        if (isWon || screen !== 'game') return; 
-        const timer = setInterval(() => {
-          setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-        }, 1000);
-        return () => clearInterval(timer);
+      useEffect(function() {
+        if (isWon || screen !== 'game') return;
+        const t = setInterval(function() { setElapsedTime(Math.floor((Date.now() - startTime) / 1000)); }, 1000);
+        return function() { clearInterval(t); };
       }, [startTime, isWon, screen]);
 
-      useEffect(() => {
-        if (showSaveModal) {
-          setSaveCode("");
-        }
-      }, [showSaveModal]);
-
-      // 絲滑收合的核心監聽邏輯
-      useEffect(() => {
+      // 畫布縮放與面板自動收合
+      useEffect(function() {
         if (screen !== 'game') return;
         const el = zoomContainerRef.current;
         if (!el) return;
-
         let touchStartY = null;
 
-        const handleTouchStart = (e) => {
-          if (e.touches.length === 1) {
-            touchStartY = e.touches[0].clientY;
-          }
-        };
-
-        const handleTouchMove = (e) => {
+        const handleTouchStart = function(e) { if (e.touches.length === 1) { touchStartY = e.touches[0].clientY; } };
+        const handleTouchMove = function(e) {
           if (e.touches.length === 2) {
             e.preventDefault(); 
             const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
             if (lastPinchDist.current) {
               const delta = dist - lastPinchDist.current;
-              setZoomLevel(prev => Math.min(Math.max(prev + delta * 0.005, 0.4), 3.5));
+              setZoomLevel(function(prev) { return Math.min(Math.max(prev + delta * 0.005, 0.4), 3.5); });
             }
             lastPinchDist.current = dist;
           } else if (e.touches.length === 1 && touchStartY !== null) {
             const dy = e.touches[0].clientY - touchStartY;
-            // 只有當面板是展開的狀態，且向下滑動超過 30px 才觸發收合，避免多餘的 State 渲染卡頓
-            if (Math.abs(dy) > 30 && !isHeaderCollapsed) {
-              setIsHeaderCollapsed(true);
-            }
+            if (Math.abs(dy) > 30 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); }
           }
         };
-
-        const handleTouchEnd = () => { 
-          lastPinchDist.current = null; 
-          touchStartY = null; 
-        };
-
-        const handleWheel = (e) => {
-          // 電腦版滾輪滑動時，同理只在展開狀態時觸發
-          if (Math.abs(e.deltaY) > 10 && !isHeaderCollapsed) {
-            setIsHeaderCollapsed(true);
-          }
-        };
+        const handleTouchEnd = function() { lastPinchDist.current = null; touchStartY = null; };
+        const handleWheel = function(e) { if (Math.abs(e.deltaY) > 10 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); } };
         
         el.addEventListener('touchstart', handleTouchStart, { passive: true });
         el.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -420,7 +407,7 @@
         el.addEventListener('touchcancel', handleTouchEnd);
         el.addEventListener('wheel', handleWheel, { passive: true });
 
-        return () => {
+        return function() {
           el.removeEventListener('touchstart', handleTouchStart);
           el.removeEventListener('touchmove', handleTouchMove);
           el.removeEventListener('touchend', handleTouchEnd);
@@ -429,912 +416,552 @@
         };
       }, [screen, isHeaderCollapsed]);
 
-      const broadcastToAll = (type, data, excludePeerId = null) => {
-        Object.values(hostConnsRef.current).forEach(conn => {
-          if (conn.peer !== excludePeerId) conn.send({ type, data });
-        });
+      const showToast = (m) => { setToastMsg(m); setTimeout(function() { setToastMsg(""); }, 4000); };
+
+      // === 遊戲狀態同步 ===
+      const syncState = (partial) => {
+        if (partial.bridges !== undefined) setBridges(partial.bridges);
+        if (partial.showSolution !== undefined) setShowSolution(partial.showSolution);
+        if (partial.randomLevelData !== undefined) setRandomLevelData(partial.randomLevelData);
+        if (partial.startTime !== undefined) setStartTime(partial.startTime);
+
+        if (engine === 'firebase' && roomRef.current) {
+          const updateObj = {};
+          if (partial.bridges !== undefined) updateObj["gameState.bridges"] = partial.bridges;
+          if (partial.showSolution !== undefined) updateObj["gameState.showSolution"] = partial.showSolution;
+          if (partial.randomLevelData !== undefined) updateObj["gameState.randomLevelData"] = partial.randomLevelData;
+          if (partial.startTime !== undefined) updateObj["gameState.startTime"] = partial.startTime;
+          updateObj.updatedAt = Date.now();
+          updateDoc(roomRef.current, updateObj).catch(function(e) { console.error("同步錯誤:", e); });
+        } else if (engine === 'peerjs' && connRef.current) {
+          connRef.current.send({ type: 'SYNC', data: { ...stateRef.current, ...partial } });
+        }
       };
 
-      const disconnectMultiplayer = () => {
-        if (peerRef.current) peerRef.current.destroy();
-        setIsMultiplayer(false); setRoomId(""); setIsHost(false); setMyPeerId(null);
-        setPlayersList([]); playersRef.current = []; hostConnsRef.current = {}; clientConnRef.current = null;
-      };
-
-      const handleGoHome = () => {
-        if (isMultiplayer) disconnectMultiplayer();
-        setScreen('home');
-      };
-
-      const startSinglePlayer = () => {
-        setIsMultiplayer(false);
-        handleReset();
-        setScreen('game');
-      };
-
-      const startMultiplayer = (roomCode, playerName) => {
-        if (!roomCode || !playerName) return alert("請完整輸入房號與您的暱稱！");
-        const fullRoomId = 'hashi-game-v13-' + roomCode; 
+      // 橋樑點擊與防呆
+      const handleBridgeClick = (bId) => {
+        if (isWon) return;
+        const cur = bridges || [];
+        const target = cur.find(function(b) { return b.id === bId; });
+        if (!target) return;
         
-        // 🛡️ 新增 STUN 與 TURN 中繼伺服器設定，專門用來穿透學校嚴格的防火牆與 NAT
-        const peerConfig = {
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              {
-                urls: "turn:relay.metered.ca:80",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-              },
-              {
-                urls: "turn:relay.metered.ca:443",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-              },
-              {
-                urls: "turn:relay.metered.ca:443?transport=tcp",
-                username: "openrelayproject",
-                credential: "openrelayproject"
+        // 交叉防呆
+        if (target.count === 0) {
+          const islandsMap = {};
+          const cLevel = randomLevelData || { islands: [] };
+          (cLevel.islands || []).forEach(function(i){ islandsMap[i.id] = i; });
+          const tFrom = islandsMap[target.from], tTo = islandsMap[target.to];
+          let isCross = false;
+          if (tFrom && tTo) {
+            if (target.type === 'h') {
+              const y = tFrom.y, minX = Math.min(tFrom.x, tTo.x), maxX = Math.max(tFrom.x, tTo.x);
+              for (let i=0; i<cur.length; i++) {
+                let b = cur[i];
+                if (b.count > 0 && b.type === 'v') {
+                  const bFrom = islandsMap[b.from], bTo = islandsMap[b.to];
+                  if (bFrom && bTo && bFrom.x > minX && bFrom.x < maxX && y > Math.min(bFrom.y, bTo.y) && y < Math.max(bFrom.y, bTo.y)) isCross = true;
+                }
               }
-            ]
+            } else {
+              const x = tFrom.x, minY = Math.min(tFrom.y, tTo.y), maxY = Math.max(tFrom.y, tTo.y);
+              for (let i=0; i<cur.length; i++) {
+                let b = cur[i];
+                if (b.count > 0 && b.type === 'h') {
+                  const bFrom = islandsMap[b.from], bTo = islandsMap[b.to];
+                  if (bFrom && bTo && bFrom.y > minY && bFrom.y < maxY && x > Math.min(bFrom.x, bTo.x) && x < Math.max(bFrom.x, bTo.x)) isCross = true;
+                }
+              }
+            }
           }
-        };
+          if (isCross) return showToast("🚫 橋樑不能交叉喔！請先移除阻擋的橋。");
+        }
 
-        const peer = new Peer(fullRoomId, peerConfig);
+        if (engine === 'none') setHistory(function(past) { return [...past, cur]; });
+        const nextCount = (target.count + 1) % 3;
+        const nextBridges = cur.map(function(b) { 
+            return b.id === bId ? { ...b, count: nextCount, owner: nextCount > 0 ? (user ? user.uid : 'p') : null } : b; 
+        });
+        syncState({ bridges: nextBridges });
+      };
 
-        peer.on('open', (id) => {
-          setIsHost(true); setIsMultiplayer(true); setRoomId(roomCode); setMyPeerId(id);
-          const initialPlayers = [{ id, name: playerName, isHost: true, color: COLORS[0] }];
-          setPlayersList(initialPlayers); playersRef.current = initialPlayers;
-          setScreen('game'); 
-          
-          peer.on('connection', (conn) => {
-            hostConnsRef.current[conn.peer] = conn;
-            conn.on('data', (msg) => {
-               if (msg.type === 'JOIN') {
-                 const newColor = COLORS[playersRef.current.length % COLORS.length];
-                 const newPlayer = { id: conn.peer, name: msg.data.name, isHost: false, color: newColor };
-                 playersRef.current = [...playersRef.current, newPlayer];
-                 setPlayersList([...playersRef.current]);
-                 broadcastToAll('SYNC_PLAYERS', playersRef.current);
-                 conn.send({ type: 'SYNC_FULL_STATE', data: stateRef.current });
-               } 
-               else if (msg.type === 'UPDATE_BRIDGE') {
-                 const nextBridges = stateRef.current.bridges.map(b => 
-                    b.id === msg.data.bridgeId ? { ...b, count: msg.data.count, owner: msg.data.owner } : b
-                 );
-                 setBridges(nextBridges); stateRef.current.bridges = nextBridges; 
-                 broadcastToAll('UPDATE_BRIDGE', msg.data, conn.peer);
-               }
-               else if (msg.type === 'SHOW_SOLUTION') {
-                 setShowSolution(msg.data); stateRef.current.showSolution = msg.data;
-                 broadcastToAll('SHOW_SOLUTION', msg.data, conn.peer);
-               }
-               else if (msg.type === 'NEW_RANDOM_LEVEL') {
-                 const { randomLevelData, levelId, bridges, startTime } = msg.data;
-                 setRandomLevelData(randomLevelData); setCurrentLevelId(levelId); setBridges(bridges);
-                 setShowSolution(false); setIsWon(false); setStartTime(startTime); setElapsedTime(0);
-                 stateRef.current = { ...stateRef.current, randomLevelData, levelId, bridges, showSolution: false, startTime };
-                 broadcastToAll('SYNC_FULL_STATE', stateRef.current, conn.peer);
-               }
-               else if (msg.type === 'UPDATE_PLAYERS') {
-                 playersRef.current = msg.data;
-                 setPlayersList([...playersRef.current]);
-                 broadcastToAll('SYNC_PLAYERS', playersRef.current);
-               }
+      // === 工具按鈕動作 ===
+      const handleUndo = () => {
+        if (history.length === 0 || isWon || engine !== 'none') return;
+        const previousState = history[history.length - 1];
+        setBridges(previousState);
+        setHistory(function(past) { return past.slice(0, -1); });
+      };
+
+      const handleReset = () => {
+        const empty = generateEmptyBridges(randomLevelData);
+        syncState({ bridges: empty, showSolution: false, startTime: Date.now() });
+        if (engine === 'none') setHistory([]);
+        setElapsedTime(0); setIsWon(false);
+      };
+
+      const handleRegenerateRandom = () => {
+        const targetLevelDef = LEVELS.find(function(l) { return l.id === currentLevelId; }) || LEVELS[1];
+        const newRandomData = generateRandomHashi(targetLevelDef);
+        const empty = generateEmptyBridges(newRandomData);
+        syncState({ randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+        setIsWon(false); setHistory([]); setElapsedTime(0); setHideVictoryModal(false);
+      };
+
+      const handleLevelChange = (newLevelId) => {
+        if (engine !== 'none' && !isHost) return;
+        const targetLevelDef = LEVELS.find(function(l) { return l.id === newLevelId; });
+        if(!targetLevelDef) return;
+        const newRandomData = generateRandomHashi(targetLevelDef);
+        const empty = generateEmptyBridges(newRandomData);
+        setCurrentLevelId(newLevelId);
+        syncState({ randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+        setIsWon(false); setHistory([]); setZoomLevel(1); setElapsedTime(0);
+      };
+
+      const handleShowSolution = () => { syncState({ showSolution: true }); };
+
+      // === 連線管理 ===
+      const startSinglePlayer = () => {
+        setEngine('none'); setScreen('game'); setHistory([]); setIsWon(false); setStartTime(Date.now()); setIsHeaderCollapsed(false);
+      };
+
+      const initiateHostGame = () => {
+        const pName = tempPlayerName.trim();
+        if (!pName) return showToast("⚠️ 請先設定顯示暱稱");
+        const rId = Math.floor(1000 + Math.random() * 9000).toString();
+        const finalId = stableMode ? "S" + rId : rId;
+        if (stableMode) { setEngine('firebase'); setupFirebase(finalId, pName, true); } 
+        else { setEngine('peerjs'); setupPeerJS(finalId, pName); }
+      };
+
+      const joinExistingGame = () => {
+        const pName = tempPlayerName.trim();
+        const rId = tempRoomId.trim().toUpperCase();
+        if (!pName || !rId) return showToast("⚠️ 請輸入暱稱與代碼");
+        if (/^[a-zA-Z]/.test(rId)) { setEngine('firebase'); setupFirebase(rId, pName, false); } 
+        else { setEngine('peerjs'); setupPeerJS(rId, pName); }
+      };
+
+      const setupFirebase = async (rId, pName, isCreating) => {
+        if (!user) return showToast("⚠️ 伺服器核對身分中，請稍後重試");
+        const safeAppId = APP_ID || 'default-app-id';
+        const rDoc = doc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'rooms'), rId);
+        roomRef.current = rDoc;
+        try {
+          if (isCreating) {
+            setIsHost(true);
+            await setDoc(rDoc, { hostId: user.uid, players: [{id: user.uid, name: pName, isHost: true, color: COLORS[0]}], gameState: stateRef.current, updatedAt: Date.now() });
+          } else {
+            const snap = await getDoc(rDoc);
+            if (!snap.exists()) return showToast("⚠️ 找不到該對局大廳，請確認代碼");
+            setIsHost(false);
+            const pList = snap.data().players || [];
+            if (!pList.find(function(p){return p.id===user.uid;})) {
+              pList.push({ id: user.uid, name: pName, isHost: false, color: COLORS[pList.length % COLORS.length] });
+              await updateDoc(rDoc, { players: pList });
+            }
+          }
+          setRoomId(rId); setScreen('game'); setIsHeaderCollapsed(false);
+          unsubRef.current = onSnapshot(rDoc, function(docSnap) {
+            if (!docSnap.exists()) { showToast("⚠️ 主機已解散對局"); handleGoHome(); return; }
+            const data = docSnap.data();
+            setPlayersList(data.players || []);
+            if (data.gameState) {
+              const gs = data.gameState;
+              if (gs.bridges) setBridges(gs.bridges);
+              if (gs.randomLevelData) setRandomLevelData(gs.randomLevelData);
+              if (gs.showSolution !== undefined) setShowSolution(gs.showSolution);
+              if (gs.startTime) setStartTime(gs.startTime);
+              stateRef.current = gs;
+            }
+          });
+        } catch(e) { console.error(e); showToast("⚠️ 雲端連線失敗，請檢查網路或權限"); }
+      };
+
+      const setupPeerJS = (rId, pName) => {
+        const p = new Peer('hashi-' + rId);
+        peerRef.current = p;
+        p.on('open', function() {
+          setIsHost(true); setRoomId(rId); setScreen('game'); setIsHeaderCollapsed(false);
+          setPlayersList([{ id: 'host', name: pName, isHost: true, color: COLORS[0] }]);
+          p.on('connection', function(c) {
+            connRef.current = c;
+            c.on('open', function() { 
+              c.send({ type: 'SYNC', data: stateRef.current }); 
+              setPlayersList(function(prev){return [...prev, {id: c.peer, name: "玩家", isHost: false, color: COLORS[1]}];});
             });
-            conn.on('close', () => {
-               delete hostConnsRef.current[conn.peer];
-               playersRef.current = playersRef.current.filter(p => p.id !== conn.peer);
-               setPlayersList([...playersRef.current]);
-               broadcastToAll('SYNC_PLAYERS', playersRef.current);
+            c.on('data', function(m) { 
+              if (m.type === 'SYNC') {
+                if(m.data.bridges) setBridges(m.data.bridges);
+                if(m.data.randomLevelData) setRandomLevelData(m.data.randomLevelData);
+                if(m.data.showSolution !== undefined) setShowSolution(m.data.showSolution);
+                if(m.data.startTime) setStartTime(m.data.startTime);
+                stateRef.current = { ...stateRef.current, ...m.data };
+              } 
             });
           });
         });
-
-        peer.on('error', (err) => {
+        p.on('error', function(err) {
           if (err.type === 'unavailable-id') {
-             peer.destroy(); 
-             const clientPeer = new Peer(peerConfig);
-             clientPeer.on('open', (id) => {
-               setMyPeerId(id);
-               const conn = clientPeer.connect(fullRoomId);
-               clientConnRef.current = conn;
-               
-               conn.on('open', () => {
-                 setIsHost(false); setIsMultiplayer(true); setRoomId(roomCode);
-                 setScreen('game'); 
-                 conn.send({ type: 'JOIN', data: { name: playerName } });
-               });
-
-               conn.on('data', (msg) => {
-                 if (msg.type === 'SYNC_PLAYERS') {
-                   setPlayersList(msg.data);
-                   playersRef.current = msg.data;
-                 } else if (msg.type === 'SYNC_FULL_STATE') {
-                   if (msg.data.randomLevelData) {
-                     setRandomLevelData(msg.data.randomLevelData);
-                     stateRef.current.randomLevelData = msg.data.randomLevelData;
-                   }
-                   if (msg.data.levelId) {
-                      setCurrentLevelId(msg.data.levelId);
-                      stateRef.current.levelId = msg.data.levelId;
-                   }
-                   if (msg.data.bridges) {
-                     setBridges(msg.data.bridges);
-                     stateRef.current.bridges = msg.data.bridges;
-                   }
-                   if (msg.data.showSolution !== undefined) {
-                     setShowSolution(msg.data.showSolution);
-                     stateRef.current.showSolution = msg.data.showSolution;
-                   }
-                   if (msg.data.startTime) {
-                     setStartTime(msg.data.startTime);
-                     stateRef.current.startTime = msg.data.startTime;
-                     setElapsedTime(Math.floor((Date.now() - msg.data.startTime)/1000));
-                   }
-                   setIsWon(false);
-                 } else if (msg.type === 'UPDATE_BRIDGE') {
-                   const nextBridges = stateRef.current.bridges.map(b => 
-                      b.id === msg.data.bridgeId ? { ...b, count: msg.data.count, owner: msg.data.owner } : b
-                   );
-                   setBridges(nextBridges);
-                   stateRef.current.bridges = nextBridges;
-                 } else if (msg.type === 'SHOW_SOLUTION') {
-                   setShowSolution(msg.data);
-                   stateRef.current.showSolution = msg.data;
-                 }
-               });
-
-               conn.on('close', () => { 
-                 alert("與主機斷開連線！"); 
-                 disconnectMultiplayer(); 
-                 setScreen('home');
-               });
-             });
-             peerRef.current = clientPeer;
-          } else { alert("連線發生錯誤：" + err.message); }
+            p.destroy(); const guestP = new Peer();
+            const c = guestP.connect('hashi-' + rId);
+            connRef.current = c;
+            c.on('open', function() { setRoomId(rId); setScreen('game'); setIsHost(false); setIsHeaderCollapsed(false); });
+            c.on('data', function(m) { 
+              if (m.type === 'SYNC') {
+                if(m.data.bridges) setBridges(m.data.bridges);
+                if(m.data.randomLevelData) setRandomLevelData(m.data.randomLevelData);
+                if(m.data.showSolution !== undefined) setShowSolution(m.data.showSolution);
+                if(m.data.startTime) setStartTime(m.data.startTime);
+                stateRef.current = { ...stateRef.current, ...m.data };
+              } 
+            });
+          } else { showToast("⚠️ P2P 連線發生錯誤"); }
         });
-        peerRef.current = peer;
       };
 
-      const islandCurrentCounts = useMemo(() => {
+      const handleGoHome = () => {
+        if (unsubRef.current) unsubRef.current();
+        if (isHost && engine === 'firebase' && roomRef.current) deleteDoc(roomRef.current).catch(function(e){});
+        if (peerRef.current) peerRef.current.destroy();
+        setScreen('home'); setEngine('none'); setIsWon(false); setElapsedTime(0); setPlayersList([]);
+      };
+
+      // === 勝利判定 ===
+      const islandCurrentCounts = useMemo(function() {
         const counts = {};
-        currentLevel.islands.forEach(i => counts[i.id] = 0);
-        bridges.forEach(b => {
+        const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
+        islands.forEach(function(i) { counts[i.id] = 0; });
+        (bridges || []).forEach(function(b) {
           if (counts[b.from] !== undefined) counts[b.from] += b.count;
           if (counts[b.to] !== undefined) counts[b.to] += b.count;
         });
         return counts;
-      }, [bridges, currentLevel]);
+      }, [bridges, randomLevelData]);
 
-      useEffect(() => {
+      useEffect(function() {
+        const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
+        if (islands.length === 0) { if (isWon) setIsWon(false); return; }
         let allCountsMatch = true;
-        for (let island of currentLevel.islands) {
-          if (islandCurrentCounts[island.id] !== island.req) {
-            allCountsMatch = false; break;
-          }
-        }
-        if (!allCountsMatch) {
-          if (isWon) setIsWon(false);
-          return;
-        }
-
-        const adjList = {};
-        currentLevel.islands.forEach(i => adjList[i.id] = []);
-        bridges.forEach(b => {
-          if (b.count > 0 && adjList[b.from] && adjList[b.to]) {
-            adjList[b.from].push(b.to);
-            adjList[b.to].push(b.from);
-          }
-        });
-
-        const visited = new Set();
-        const queue = [currentLevel.islands[0].id];
+        for (let i=0; i<islands.length; i++) { if (islandCurrentCounts[islands[i].id] !== islands[i].req) { allCountsMatch = false; break; } }
+        if (!allCountsMatch) { if (isWon) setIsWon(false); return; }
+        
+        const adjList = {}; islands.forEach(function(i) { adjList[i.id] = []; });
+        (bridges || []).forEach(function(b) { if (b.count > 0 && adjList[b.from] && adjList[b.to]) { adjList[b.from].push(b.to); adjList[b.to].push(b.from); } });
+        const visited = new Set(); const queue = [islands[0].id];
         if (queue.length > 0) visited.add(queue[0]);
-
         while (queue.length > 0) {
           const curr = queue.shift();
-          for (let neighbor of adjList[curr]) {
-            if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); }
+          if (adjList[curr]) {
+            adjList[curr].forEach(function(neighbor) { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } });
           }
         }
-
-        if (visited.size === currentLevel.islands.length) {
-          if (!isWon) { setIsWon(true); setHideVictoryModal(false); }
-        } else { setIsWon(false); }
-      }, [bridges, currentLevel, islandCurrentCounts, isWon]);
-
-      const showMessage = (msg) => {
-        setMessage(msg); setTimeout(() => setMessage(""), 3000);
-      };
-
-      const showToast = (msg) => {
-        setToastMsg(msg); setTimeout(() => setToastMsg(""), 3000);
-      };
-
-      const isCrossing = (targetBridge, currentBridges) => {
-        const islandsMap = {};
-        currentLevel.islands.forEach(i => islandsMap[i.id] = i);
-        const tFrom = islandsMap[targetBridge.from];
-        const tTo = islandsMap[targetBridge.to];
-        if (!tFrom || !tTo) return false;
-
-        if (targetBridge.type === 'h') {
-          const y = tFrom.y;
-          const minX = Math.min(tFrom.x, tTo.x); const maxX = Math.max(tFrom.x, tTo.x);
-          for (let b of currentBridges) {
-            if (b.count > 0 && b.type === 'v') {
-              const bFrom = islandsMap[b.from]; const bTo = islandsMap[b.to];
-              if (!bFrom || !bTo) continue;
-              const x = bFrom.x;
-              const minY = Math.min(bFrom.y, bTo.y); const maxY = Math.max(bFrom.y, bTo.y);
-              if (x > minX && x < maxX && y > minY && y < maxY) return true;
-            }
-          }
-        } else {
-          const x = tFrom.x;
-          const minY = Math.min(tFrom.y, tTo.y); const maxY = Math.max(tFrom.y, tTo.y);
-          for (let b of currentBridges) {
-            if (b.count > 0 && b.type === 'h') {
-              const bFrom = islandsMap[b.from]; const bTo = islandsMap[b.to];
-              if (!bFrom || !bTo) continue;
-              const y = bFrom.y;
-              const minX = Math.min(bFrom.x, bTo.x); const maxX = Math.max(bFrom.x, bTo.x);
-              if (y > minY && y < maxY && x > minX && x < maxX) return true;
-            }
-          }
-        }
-        return false;
-      };
-
-      const handleBridgeClick = (bridgeId) => {
-        if (isWon) return; 
-
-        const currentBridges = stateRef.current.bridges;
-        const target = currentBridges.find(b => b.id === bridgeId);
-        if (!target) return;
-        
-        if (target.count === 0 && isCrossing(target, currentBridges)) {
-          showMessage("🚫 橋樑不能交叉喔！請先移除阻擋的橋。");
-          return;
-        }
-
-        if (!stateRef.current.isMultiplayer) setHistory(past => [...past, currentBridges]);
-
-        const newCount = (target.count + 1) % 3;
-        const newOwner = newCount > 0 ? stateRef.current.myPeerId : null;
-
-        const nextBridges = currentBridges.map(b => 
-          b.id === bridgeId ? { ...b, count: newCount, owner: newOwner } : b
-        );
-
-        setBridges(nextBridges);
-        stateRef.current.bridges = nextBridges;
-
-        if (stateRef.current.isMultiplayer) {
-          const syncData = { bridgeId, count: newCount, owner: newOwner };
-          if (stateRef.current.isHost) broadcastToAll('UPDATE_BRIDGE', syncData);
-          else if (clientConnRef.current) clientConnRef.current.send({ type: 'UPDATE_BRIDGE', data: syncData });
-        }
-      };
+        if (visited.size === islands.length && islands.length > 0) { if (!isWon) { setIsWon(true); setHideVictoryModal(false); } } 
+        else { setIsWon(false); }
+      }, [bridges, randomLevelData, islandCurrentCounts, isWon]);
 
       const handlePlayerColorChange = (playerId) => {
-        if (!isMultiplayer) return;
-        const updatedPlayers = playersList.map(p => {
-           if (p.id === playerId) {
-              const nextColor = COLORS[(COLORS.indexOf(p.color) + 1) % COLORS.length];
-              return { ...p, color: nextColor };
-           }
-           return p;
-        });
+        if (engine !== 'firebase' || !activeRoomRef.current) return;
+        const updatedPlayers = playersList.map(function(p) { if (p.id === playerId) { const nextColor = COLORS[(COLORS.indexOf(p.color) + 1) % COLORS.length]; return { ...p, color: nextColor }; } return p; });
         setPlayersList(updatedPlayers);
-        playersRef.current = updatedPlayers;
-        if (isHost) {
-           broadcastToAll('SYNC_PLAYERS', updatedPlayers);
-        } else if (clientConnRef.current) {
-           clientConnRef.current.send({ type: 'UPDATE_PLAYERS', data: updatedPlayers });
-        }
+        updateDoc(activeRoomRef.current, { players: updatedPlayers }).catch(function(e){});
       };
 
-      const handleUndo = () => {
-        if (history.length === 0 || isWon || isMultiplayer) return;
-        const previousState = history[history.length - 1];
-        setBridges(previousState);
-        setHistory(past => past.slice(0, -1));
-      };
-
-      const handleReset = () => {
-        const empty = generateEmptyBridges(currentLevel);
-        const stTime = Date.now();
-        setBridges(empty); stateRef.current.bridges = empty;
-        setShowSolution(false); setStartTime(stTime); setElapsedTime(0);
-        
-        if (isMultiplayer && isHost) broadcastToAll('SYNC_FULL_STATE', { bridges: empty, levelId: currentLevelId, showSolution: false, startTime: stTime });
-        else if (!isMultiplayer) setHistory([]);
-      };
-
-      const handleShowSolution = () => {
-        setShowSolution(true); stateRef.current.showSolution = true;
-        if (isMultiplayer) {
-          if (isHost) broadcastToAll('SHOW_SOLUTION', true);
-          else if (clientConnRef.current) clientConnRef.current.send({ type: 'SHOW_SOLUTION', data: true });
-        }
-      };
-
-      const handleRegenerateRandom = () => {
-        const targetLevelDef = LEVELS.find(l => l.id === currentLevelId);
-        if (!targetLevelDef) return;
-
-        const newRandomData = generateRandomHashi(targetLevelDef);
-        const empty = generateEmptyBridges(newRandomData);
-        const stTime = Date.now();
-
-        setRandomLevelData(newRandomData);
-        setBridges(empty);
-        setShowSolution(false); setIsWon(false); setHistory([]); setStartTime(stTime); setElapsedTime(0);
-        
-        stateRef.current.bridges = empty;
-        stateRef.current.randomLevelData = newRandomData;
-        stateRef.current.showSolution = false;
-        stateRef.current.startTime = stTime;
-
-        if (isMultiplayer) {
-          const payload = { randomLevelData: newRandomData, levelId: currentLevelId, bridges: empty, showSolution: false, startTime: stTime };
-          if (isHost) broadcastToAll('SYNC_FULL_STATE', payload);
-          else if (clientConnRef.current) clientConnRef.current.send({ type: 'NEW_RANDOM_LEVEL', data: payload });
-        }
-      };
-
-      const handleLevelChange = (newLevelId) => {
-        if (isMultiplayer && !isHost) return;
-
-        const targetLevelDef = LEVELS.find(l => l.id === newLevelId);
-        const newRandomData = generateRandomHashi(targetLevelDef);
-        const empty = generateEmptyBridges(newRandomData);
-        const stTime = Date.now();
-
-        setCurrentLevelId(newLevelId); setRandomLevelData(newRandomData);
-        setBridges(empty); setShowSolution(false); setIsWon(false);
-        setHistory([]); setZoomLevel(1); setStartTime(stTime); setElapsedTime(0);
-
-        stateRef.current.levelId = newLevelId;
-        stateRef.current.randomLevelData = newRandomData;
-        stateRef.current.bridges = empty;
-        stateRef.current.startTime = stTime;
-
-        if (isMultiplayer && isHost) {
-          broadcastToAll('SYNC_FULL_STATE', { bridges: empty, levelId: newLevelId, randomLevelData: newRandomData, showSolution: false, startTime: stTime });
-        }
-      };
-
+      // 存讀檔
       const handleSaveCode = () => {
-        const saveData = {
-          lid: currentLevelId,
-          r: randomLevelData,
-          b: bridges.filter(br => br.count > 0).map(br => ({ i: br.id, c: br.count, o: br.owner }))
-        };
+        const saveData = { lid: currentLevelId, r: randomLevelData, b: (bridges || []).filter(function(br){return br.count > 0;}).map(function(br){return { i: br.id, c: br.count, o: br.owner };}) };
         const code = btoa(encodeURIComponent(JSON.stringify(saveData)));
         setSaveCode(code);
-
-        const textArea = document.createElement("textarea");
-        textArea.value = code;
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          showToast("✅ 已複製到剪貼簿！");
-        } catch (err) {
-          console.error('複製失敗', err);
-        }
+        const textArea = document.createElement("textarea"); textArea.value = code; document.body.appendChild(textArea); textArea.select();
+        try { document.execCommand('copy'); showToast("✅ 已產生並複製代碼！"); } catch (err) {}
         document.body.removeChild(textArea);
       };
-
       const handleQuickPaste = async () => {
-        try {
-          if (navigator.clipboard && navigator.clipboard.readText) {
-             const text = await navigator.clipboard.readText();
-             if(text) {
-                setSaveCode(text);
-                showToast("✅ 貼上成功！");
-             }
-          } else {
-             throw new Error("Clipboard API not supported");
-          }
-        } catch (err) {
-          const ta = document.getElementById("saveCodeTextarea");
-          if (ta) ta.focus();
-          showToast("⚠️ 瀏覽器阻擋自動貼上，請長按或 Ctrl+V 手動貼上");
-        }
+        try { if (navigator.clipboard && navigator.clipboard.readText) { const text = await navigator.clipboard.readText(); if(text) { setSaveCode(text); showToast("✅ 貼上成功！"); } } else { throw new Error(); } } 
+        catch (err) { const ta = document.getElementById("saveCodeTextarea"); if (ta) ta.focus(); showToast("⚠️ 瀏覽器阻擋自動貼上，請手動貼上"); }
       };
-
       const handleLoadCode = () => {
         try {
-          if (!saveCode.trim()) return alert("請貼上代碼");
+          if (!saveCode.trim()) return showToast("⚠️ 請貼上代碼");
           const data = JSON.parse(decodeURIComponent(atob(saveCode.trim())));
-          const baseLevel = LEVELS.find(l => l.id === data.lid);
-          if (!baseLevel) return alert("無效的代碼 (找不到關卡)");
-
+          const baseLevel = LEVELS.find(function(l){return l.id === data.lid;});
+          if (!baseLevel) return showToast("⚠️ 無效的代碼");
           const newRandom = data.r;
           const emptyBridges = generateEmptyBridges(newRandom || baseLevel);
-          
-          data.b.forEach(savedBr => {
-             let tb = emptyBridges.find(eb => eb.id === savedBr.i);
-             if (tb) { tb.count = savedBr.c; tb.owner = savedBr.o; }
-          });
-
+          data.b.forEach(function(savedBr){ let tb = emptyBridges.find(function(eb){return eb.id === savedBr.i;}); if (tb) { tb.count = savedBr.c; tb.owner = savedBr.o; } });
           setCurrentLevelId(data.lid);
-          setRandomLevelData(newRandom);
-          setBridges(emptyBridges);
-          setShowSolution(false); setIsWon(false); setShowSaveModal(false);
-
-          stateRef.current.levelId = data.lid;
-          stateRef.current.randomLevelData = newRandom;
-          stateRef.current.bridges = emptyBridges;
-
-          if (isMultiplayer) {
-             const payload = { randomLevelData: newRandom, levelId: data.lid, bridges: emptyBridges, showSolution: false, startTime: stateRef.current.startTime };
-             if (isHost) broadcastToAll('SYNC_FULL_STATE', payload);
-             else if (clientConnRef.current) clientConnRef.current.send({ type: 'NEW_RANDOM_LEVEL', data: payload });
-          }
-          showToast("✅ 讀取成功！進度已恢復。");
-        } catch(e) {
-          alert("讀檔失敗，請確認代碼是否完整！");
-        }
+          syncState({ randomLevelData: newRandom, bridges: emptyBridges, showSolution: false });
+          setIsWon(false); setShowSaveModal(false); showToast("✅ 讀取成功！");
+        } catch(e) { showToast("⚠️ 讀檔失敗！"); }
       };
 
-      const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.3, 3.5));
-      const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.3, 0.4));
+      const handleZoomIn = () => setZoomLevel(function(prev){return Math.min(prev + 0.3, 3.5);});
+      const handleZoomOut = () => setZoomLevel(function(prev){return Math.max(prev - 0.3, 0.4);});
       const handleZoomReset = () => setZoomLevel(1);
 
-      const maxGridX = Math.max(...currentLevel.islands.map(i => i.x), 0); 
-      const maxGridY = Math.max(...currentLevel.islands.map(i => i.y), 0);
-      const gridWidth = currentLevel.width || (maxGridX + 1);
-      const gridHeight = currentLevel.height || (maxGridY + 1);
-
-      const SCALE = 65;
-      const PADDING = 85;
-      const ISLAND_RADIUS = 20;
-
-      const svgWidthBase = (gridWidth - 1) * SCALE + PADDING * 2;
-      const svgHeightBase = (gridHeight - 1) * SCALE + PADDING * 2;
-
-      const renderGridLines = () => {
-        const lines = [];
-        for(let i=0; i<gridWidth; i++) {
-          lines.push(<line key={`gv_${i}`} x1={i * SCALE + PADDING} y1={PADDING} x2={i * SCALE + PADDING} y2={(gridHeight - 1) * SCALE + PADDING} stroke="#94a3b8" strokeWidth="2" strokeOpacity="0.8" />);
-        }
-        for(let i=0; i<gridHeight; i++) {
-          lines.push(<line key={`gh_${i}`} x1={PADDING} y1={i * SCALE + PADDING} x2={(gridWidth - 1) * SCALE + PADDING} y2={i * SCALE + PADDING} stroke="#94a3b8" strokeWidth="2" strokeOpacity="0.8" />);
-        }
-        return <g className="pointer-events-none">{lines}</g>;
-      };
-
-      const renderSolutionBridge = (bridge) => {
-        const islandsMap = {};
-        currentLevel.islands.forEach(i => islandsMap[i.id] = i);
-        const from = islandsMap[bridge.from];
-        const to = islandsMap[bridge.to];
-        if (!from || !to) return null;
-
-        const x1 = from.x * SCALE + PADDING; const y1 = from.y * SCALE + PADDING;
-        const x2 = to.x * SCALE + PADDING;   const y2 = to.y * SCALE + PADDING;
-        const stroke = "#ef4444"; 
-
-        return (
-          <g key={`sol_${bridge.from}_${bridge.to}`} className="pointer-events-none opacity-60">
-            {bridge.count === 1 && ( <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth="8" strokeLinecap="round" className="solution-line" /> )}
-            {bridge.count === 2 && bridge.type === 'h' && (
-              <g>
-                <line x1={x1} y1={y1 - 6} x2={x2} y2={y2 - 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-                <line x1={x1} y1={y1 + 6} x2={x2} y2={y2 + 6} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </g>
-            )}
-            {bridge.count === 2 && bridge.type === 'v' && (
-              <g>
-                <line x1={x1 - 6} y1={y1} x2={x2 - 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-                <line x1={x1 + 6} y1={y1} x2={x2 + 6} y2={y2} stroke={stroke} strokeWidth="6" strokeLinecap="round" className="solution-line" />
-              </g>
-            )}
-          </g>
-        );
-      }
-
-      const renderBridge = (bridge) => {
-        const islandsMap = {};
-        currentLevel.islands.forEach(i => islandsMap[i.id] = i);
-        const from = islandsMap[bridge.from];
-        const to = islandsMap[bridge.to];
-        if (!from || !to) return null;
-
-        const x1 = from.x * SCALE + PADDING; const y1 = from.y * SCALE + PADDING;
-        const x2 = to.x * SCALE + PADDING;   const y2 = to.y * SCALE + PADDING;
-
-        let lineStroke = "#1e293b"; 
-        let lineOpacity = 1;
-
-        if (stateRef.current.isMultiplayer && bridge.count > 0 && bridge.owner && bridge.owner !== stateRef.current.myPeerId) {
-            const ownerObj = playersList.find(p => p.id === bridge.owner);
-            lineStroke = ownerObj ? ownerObj.color : "#94a3b8"; 
-            lineOpacity = 0.5; 
-        }
-
-        return (
-          <g key={bridge.id} className="group cursor-pointer" onClick={() => handleBridgeClick(bridge.id)}>
-            {bridge.type === 'h' ? (
-              <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
-            ) : (
-              <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
-            )}
-            
-            {bridge.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />}
-            {bridge.count === 2 && bridge.type === 'h' && (
-              <g>
-                <line x1={x1} y1={y1 - 5} x2={x2} y2={y2 - 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-                <line x1={x1} y1={y1 + 5} x2={x2} y2={y2 + 5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </g>
-            )}
-            {bridge.count === 2 && bridge.type === 'v' && (
-              <g>
-                <line x1={x1 - 5} y1={y1} x2={x2 - 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-                <line x1={x1 + 5} y1={y1} x2={x2 + 5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />
-              </g>
-            )}
-          </g>
-        );
-      };
-
-      const renderIsland = (island) => {
-        const cx = island.x * SCALE + PADDING;
-        const cy = island.y * SCALE + PADDING;
-        const current = islandCurrentCounts[island.id];
-        
-        let strokeColor = "#2d2a26"; let bgColor = "#fffdfa"; let textColor = "#2d2a26";
-        if (current === island.req) {
-          strokeColor = "#059669"; bgColor = "#d1fae5"; textColor = "#065f46";
-        } else if (current > island.req) {
-          strokeColor = "#dc2626"; bgColor = "#fee2e2"; textColor = "#991b1b";
-        }
-
-        return (
-          <g key={`island-${island.id}`}>
-            <circle cx={cx + 3} cy={cy + 3} r={ISLAND_RADIUS} fill="rgba(45,42,38,0.15)" />
-            <circle cx={cx} cy={cy} r={ISLAND_RADIUS} fill={bgColor} stroke={strokeColor} strokeWidth="4" className="transition-colors duration-300" />
-            <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none transition-colors duration-300" fill={textColor}>
-              {island.req}
-            </text>
-          </g>
-        );
-      };
-
+      // === UI 渲染 ===
       if (screen === 'home') {
         return (
-          <div className="h-screen w-screen flex flex-col items-center justify-between p-4 relative overflow-hidden animate-fadeIn">
-            <div className="flex-1 flex flex-col justify-center w-full max-w-md items-center">
-              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-10 rounded-2xl shadow-[8px_8px_0px_#2d2a26] w-full text-center relative transform -rotate-1 z-10">
-                 
-                 <h1 className="text-6xl font-black text-[#2d2a26] mb-6 tracking-widest flex justify-center gap-3">
-                    <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform rotate-3 shadow-[4px_4px_0px_#2d2a26]">數</span>
-                    <span className="inline-block bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform -rotate-2 shadow-[4px_4px_0px_#2d2a26]">橋</span>
-                 </h1>
-
-                 <div className="inline-block border-[3px] border-dashed border-[#2d2a26] rounded-xl px-6 py-2 mb-8 bg-white shadow-[4px_4px_0px_#2d2a26] transform rotate-2">
-                    <p className="text-[#2d2a26] font-black text-xl tracking-widest">Hashi Puzzle</p>
-                 </div>
-
-                 <div className="flex flex-col gap-5">
-                    <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform rotate-1">
-                      👤 單人遊玩
-                    </button>
-                    <button onClick={() => setScreen('join')} className="w-full py-4 bg-emerald-400 border-[4px] border-[#2d2a26] rounded-xl font-black text-xl text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform -rotate-1">
-                      🌐 多人連線
-                    </button>
-                 </div>
+          <div className="h-screen w-screen flex flex-col items-center justify-center p-4">
+            <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-10 rounded-2xl shadow-[8px_8px_0px_#2d2a26] text-center transform -rotate-1 w-full max-w-md animate-fadeIn">
+              <h1 className="text-6xl font-black mb-6 flex justify-center gap-3">
+                <span className="bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform rotate-3 shadow-[4px_4px_0px_#2d2a26]">數</span>
+                <span className="bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform -rotate-2 shadow-[4px_4px_0px_#2d2a26]">橋</span>
+              </h1>
+              <div className="inline-block border-[3px] border-dashed border-[#2d2a26] rounded-xl px-6 py-2 mb-8 bg-white transform rotate-2">
+                <p className="text-[#2d2a26] font-black text-xl tracking-widest uppercase italic">Hashi Puzzle</p>
+              </div>
+              <div className="flex flex-col gap-4">
+                <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">👤 自行挑戰</button>
+                <button onClick={function(){ setScreen('join'); }} className="w-full py-4 bg-emerald-400 border-[4px] border-[#2d2a26] rounded-xl font-black text-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">🌐 多人連線</button>
               </div>
             </div>
-            
-            <div className="shrink-0 pb-4 text-[#2d2a26] font-black text-sm opacity-60 tracking-wider z-10">
-              葉大帥@2026
-            </div>
+            <div className="mt-8 font-black opacity-30 text-sm">葉大帥@2026</div>
           </div>
         );
       }
 
       if (screen === 'join') {
         return (
-          <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative animate-fadeIn">
-            <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-8 rounded-2xl shadow-[8px_8px_0px_#2d2a26] max-w-md w-full transform rotate-1 z-10">
-              <h2 className="text-2xl font-black text-[#2d2a26] mb-4 inline-block border-b-[4px] border-[#ffcc00] pb-1">🌐 進入多人連線</h2>
-              <p className="text-sm font-bold text-slate-600 mb-6 leading-relaxed">首位輸入房號者將成為「主機 👑」，其餘輸入同房號者即自動加入該房間。</p>
+          <div className="h-screen w-screen flex flex-col items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-white border-[4px] border-[#2d2a26] p-8 rounded-2xl shadow-[10px_10px_0px_#2d2a26] max-w-2xl w-full">
+              <h2 onClick={function(){
+                const c = titleClicks + 1; setTitleClicks(c);
+                if (c >= 3) { setStableMode(true); showToast("🛡️ 雲端穩定模式已開啟 (產生的代碼將有S)"); }
+              }} className="text-2xl font-black mb-6 border-b-4 border-[#ffcc00] inline-block cursor-pointer select-none">🌐 多人連線選單</h2>
               
-              <div className="flex flex-col gap-4 mb-8">
-                <div>
-                  <label className="block text-[#2d2a26] font-bold text-sm mb-1">您的暱稱：</label>
-                  <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={(e) => setTempPlayerName(e.target.value)} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-bold text-base shadow-[3px_3px_0px_#2d2a26] outline-none focus:bg-yellow-50" />
+              <div className="mb-6">
+                <label className="block font-black text-sm mb-1 text-slate-500 italic">第一步：設定顯示暱稱</label>
+                <input type="text" placeholder="輸入同學認得的名字" value={tempPlayerName} onChange={function(e){setTempPlayerName(e.target.value);}} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-bold bg-yellow-50 outline-none focus:ring-2 ring-[#ffcc00]" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* 發起區塊 */}
+                <div className="border-t-4 md:border-t-0 md:border-r-4 border-dashed border-slate-200 pt-4 md:pt-0 md:pr-6 flex flex-col h-full">
+                   <h3 className="font-black text-lg mb-2 flex items-center gap-2">👑 建立對局大廳</h3>
+                   <p className="text-xs text-slate-500 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供同學加入。</p>
+                   <button onClick={initiateHostGame} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mt-auto">發起多人對局</button>
                 </div>
-                <div>
-                  <label className="block text-[#2d2a26] font-bold text-sm mb-1">建立/加入的房號：</label>
-                  <input type="text" placeholder="例如：8888" value={tempRoomId} onChange={(e) => setTempRoomId(e.target.value)} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-bold text-base shadow-[3px_3px_0px_#2d2a26] outline-none focus:bg-yellow-50" />
+
+                {/* 加入區塊 */}
+                <div className="pt-4 md:pt-0 flex flex-col h-full">
+                   <h3 className="font-black text-lg mb-2 flex items-center gap-2">👤 參與現有對局</h3>
+                   <p className="text-xs text-slate-500 mb-2 font-bold">請輸入主機分派的 4 碼 (或 S 開頭) 邀請碼：</p>
+                   <input type="text" maxLength="5" placeholder="輸入邀請碼" value={tempRoomId} onChange={function(e){setTempRoomId(e.target.value.toUpperCase());}} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase" />
+                   <button onClick={joinExistingGame} className="w-full py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mt-auto">參與對局連線</button>
                 </div>
               </div>
 
-              <div className="flex gap-4">
-                <button onClick={() => setScreen('home')} className="flex-1 py-3 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">返回</button>
-                <button onClick={() => { startMultiplayer(tempRoomId.trim(), tempPlayerName.trim()); }} className="flex-1 py-3 bg-emerald-400 text-[#2d2a26] border-[4px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">連線出發！</button>
-              </div>
+              <button onClick={function(){setScreen('home');}} className="mt-8 w-full text-slate-400 font-bold hover:text-[#2d2a26] hover:underline text-center transition-colors">取消返回主選單</button>
             </div>
+            {toastMsg && <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-[#2d2a26] text-white px-6 py-3 rounded-full font-bold z-[100] border-[3px] border-[#fffdfa] shadow-xl animate-fadeIn">{toastMsg}</div>}
           </div>
         );
       }
+
+      const cLevel = randomLevelData || { islands: [], description: "" };
+      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
+      const islData = cLevel.islands || [];
+      const gridWidth = cLevel.width || 10;
+      const gridHeight = cLevel.height || 10;
+      const svgW = gridWidth * SCALE + PADDING * 2;
+      const svgH = gridHeight * SCALE + PADDING * 2;
 
       return (
         <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans overflow-hidden animate-fadeIn">
           <div className="w-full max-w-[1200px] bg-[#fffdfa] rounded-xl border-4 border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] flex flex-col h-full relative z-10 overflow-hidden">
             
-            {/* Header Container */}
-            <div className="bg-[#ffcc00] border-b-4 border-[#2d2a26] text-[#2d2a26] shrink-0 z-20 relative">
-              
-              {/* Top Bar (Always Row) */}
-              <div className={`flex flex-wrap items-center justify-between gap-2 w-full transition-all duration-500 ease-in-out ${isHeaderCollapsed ? 'p-2' : 'p-3 md:p-4'}`}>
-                
-                {/* Title & Timer */}
+            <div className={`bg-[#ffcc00] border-b-4 border-[#2d2a26] text-[#2d2a26] shrink-0 z-20 transition-all duration-300 ease-in-out ${isHeaderCollapsed ? 'p-2 flex flex-col md:flex-row gap-2 items-center justify-between' : 'p-3 md:p-4 flex flex-col gap-3'}`}>
+              <div className="flex justify-between items-center w-full flex-wrap gap-2">
                 <div className="flex items-center gap-3 flex-wrap">
-                   <h1 className={`font-black tracking-tight uppercase transition-all duration-500 ${isHeaderCollapsed ? 'text-lg' : 'text-2xl md:text-3xl'}`}>🌉 數橋</h1>
-                   <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 md:px-3 py-1 rounded-lg font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-sm md:text-base">
-                      ⏱ {formatTime(elapsedTime)}
-                   </div>
+                   <h1 className={`font-black tracking-tight uppercase ${isHeaderCollapsed ? 'text-lg px-2' : 'text-2xl md:text-3xl'}`}>🌉 數橋</h1>
+                   <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 md:px-3 py-1 rounded-lg font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-sm md:text-base">⏱ {formatTime(elapsedTime)}</div>
+                   {engine !== 'none' && ( <span className="bg-emerald-400 text-[#2d2a26] px-2 py-1 rounded-lg border-2 border-[#2d2a26] font-black text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] animate-pulse flex items-center gap-1">{isHost ? '👑 主機' : '👤 玩家'} | 代碼: {roomId} {engine==='firebase' && '☁️'}</span> )}
                 </div>
 
-                {/* Right Action Buttons */}
-                <div className="flex items-center gap-2 flex-wrap ml-auto justify-end">
-                   {/* Quick tools shown only when collapsed */}
-                   <div className={`flex items-center gap-1 md:gap-2 overflow-hidden transition-all duration-500 ease-in-out ${isHeaderCollapsed ? 'max-w-[400px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none'}`}>
-                     <div className="flex items-center gap-1 md:gap-2 w-max">
-                       <select 
-                         disabled={isMultiplayer && !isHost}
-                         value={currentLevelId} 
-                         onChange={(e) => handleLevelChange(Number(e.target.value))} 
-                         className="px-2 py-1 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-sm outline-none cursor-pointer max-w-[100px] sm:max-w-none"
-                       >
-                         {LEVELS.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
-                       </select>
-                       <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 py-1 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-sm hover:bg-slate-100 disabled:opacity-50" title="復原">↩️</button>
-                       {(!isMultiplayer || isHost) && (
-                         <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm hover:bg-red-600" title="重置">🔄</button>
-                       )}
-                     </div>
-                   </div>
+                {isHeaderCollapsed && (
+                  <div className="flex items-center gap-2 flex-wrap justify-end w-full md:w-auto">
+                    <select disabled={engine !== 'none' && !isHost} value={currentLevelId} onChange={function(e){handleLevelChange(Number(e.target.value));}} className={`px-2 py-1 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-sm outline-none shadow-[2px_2px_0px_#2d2a26] max-w-[120px] sm:max-w-none ${engine !== 'none' && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                      {LEVELS.map(function(level){return <option key={level.id} value={level.id}>{level.name}</option>;})}
+                    </select>
+                    {engine === 'none' && <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-2 py-1 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26] disabled:opacity-50">↩️</button>}
+                    {(engine === 'none' || isHost) && <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]">🔄</button>}
+                    <button onClick={function(){setShowSaveModal(true);}} className="px-2 py-1 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]">💾</button>
+                    <button onClick={function(){setIsHeaderCollapsed(false);}} className="ml-auto bg-[#2d2a26] text-white px-2 py-1 rounded-md font-bold text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800">🔽 展開</button>
+                  </div>
+                )}
 
-                   {/* Global actions */}
-                   <button onClick={() => setShowSaveModal(true)} className="px-2 md:px-3 py-1 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm md:text-base shadow-[2px_2px_0px_#2d2a26] hover:bg-blue-600 flex items-center gap-1" title="存檔/讀檔">
-                     💾 <span className="hidden md:inline">存讀檔</span>
-                   </button>
-                   <button onClick={() => setIsHeaderCollapsed(!isHeaderCollapsed)} className="px-2 md:px-3 py-1 bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm md:text-base shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800 flex items-center gap-1">
-                     {isHeaderCollapsed ? '🔽 展開' : '🔼 縮小'}
-                   </button>
-                </div>
+                {!isHeaderCollapsed && (
+                  <div className="flex items-center gap-2 flex-wrap justify-end mt-2 md:mt-0 w-full md:w-auto">
+                    <button onClick={function(){setShowSaveModal(true);}} className="bg-blue-500 text-white border-2 border-[#2d2a26] px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none flex items-center gap-1">💾 <span className="hidden md:inline">存檔/讀檔</span><span className="md:hidden">存檔</span></button>
+                    <button onClick={handleGoHome} className="bg-red-500 text-white border-2 border-[#2d2a26] px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none flex items-center gap-1">🏠 退出遊戲</button>
+                    <button onClick={function(){setIsHeaderCollapsed(true);}} className="bg-[#2d2a26] text-white px-2 md:px-3 py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] active:translate-y-1 active:shadow-none flex items-center gap-1">🔼 <span className="hidden md:inline">縮小面板</span><span className="md:hidden">縮小</span></button>
+                  </div>
+                )}
               </div>
 
-              {/* Expandable Area */}
-              <div className={`w-full overflow-hidden transition-all duration-500 ease-in-out origin-top ${isHeaderCollapsed ? 'max-h-0 opacity-0 scale-y-95' : 'max-h-[1000px] opacity-100 scale-y-100'}`}>
-                 <div className="px-2 pb-2 md:px-4 md:pb-4 flex flex-col gap-2">
+              {!isHeaderCollapsed && (
+                <div className="w-full mt-2 animate-fadeIn">
+                  <div className="bg-white border-[3px] border-[#2d2a26] rounded-xl p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_#2d2a26] flex flex-col md:flex-row gap-4 mb-2">
+                    <div className="flex-1">
+                      <h3 className="text-base md:text-lg font-black mb-1 md:mb-2 border-b-[3px] border-[#ffcc00] inline-block pb-1">📜 遊戲四大規則</h3>
+                      <ol className="list-decimal list-outside ml-5 space-y-1 md:space-y-1.5 text-xs md:text-sm leading-relaxed font-bold">
+                        <li>每個圓圈是一座「島」，數字代表需要<span className="text-blue-600 font-black">幾座橋樑</span>。</li>
+                        <li>橋樑必須是<span className="text-blue-600 font-black">垂直或水平</span>方向。</li>
+                        <li>橋樑之間<span className="text-red-500 font-black">絕對不能交叉或重疊</span>。</li>
+                        <li>兩座島之間最多架設 2 座橋，且完成時所有島嶼必須<span className="text-emerald-600 font-black">全部連通</span>。</li>
+                      </ol>
+                    </div>
+                    <div className="md:w-1/3 bg-[#ffcc00]/20 p-3 rounded-xl border-[3px] border-dashed border-[#2d2a26] flex flex-col justify-center relative">
+                      <p className="text-slate-800 font-black text-sm md:text-base mb-1 flex items-center gap-1"><span>💡</span> 提示與狀態：</p>
+                      <p className="text-slate-700 text-xs md:text-sm font-bold leading-relaxed">{cLevel.description}</p>
+                      {engine !== 'none' && ( <div className="mt-2 text-xs text-emerald-800 font-bold bg-emerald-200 p-1.5 rounded-lg border-2 border-emerald-500 shadow-sm">連線模式中，「復原」功能已停用。</div> )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 items-center w-full bg-white/50 p-2 rounded-xl border-[3px] border-dashed border-[#2d2a26]">
+                    <span className="font-bold text-[#2d2a26] ml-1 text-sm md:text-base hidden sm:inline">選擇題型：</span>
+                    <select disabled={engine !== 'none' && !isHost} value={currentLevelId} onChange={function(e){handleLevelChange(Number(e.target.value));}} className={`px-2 py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-base outline-none shadow-[3px_3px_0px_#2d2a26] max-w-[140px] sm:max-w-none ${engine !== 'none' && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                      {LEVELS.map(function(level){return <option key={level.id} value={level.id}>{level.name}</option>;})}
+                    </select>
+                    {engine !== 'none' && !isHost && <span className="text-xs font-bold text-slate-700 bg-white/50 px-1 py-1 rounded">(僅房主可更換題目)</span>}
                     
-                    {/* Rule panel */}
-                    <div className="bg-white border-[3px] border-[#2d2a26] rounded-xl p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_#2d2a26] flex flex-col md:flex-row gap-4 mb-1">
-                      <div className="flex-1">
-                        <h3 className="text-base md:text-lg font-black mb-1 md:mb-2 border-b-[3px] border-[#ffcc00] inline-block pb-1">📜 遊戲四大規則</h3>
-                        <ol className="list-decimal list-outside ml-5 space-y-1 md:space-y-1.5 text-xs md:text-sm leading-relaxed font-bold">
-                          <li>每個圓圈是一座「島」，數字代表需要<span className="text-blue-600 font-black">幾座橋樑</span>。</li>
-                          <li>橋樑必須是<span className="text-blue-600 font-black">垂直或水平</span>方向。</li>
-                          <li>橋樑之間<span className="text-red-500 font-black">絕對不能交叉或重疊</span>。</li>
-                          <li>兩座島之間<span className="text-blue-600 font-black">最多只能架設 2 座橋</span>。</li>
-                          <li>完成時，每個島都要能<span className="text-emerald-600 font-black">通往其他任何島</span>。</li>
-                        </ol>
-                      </div>
-                      <div className="md:w-1/3 bg-[#ffcc00]/20 p-3 rounded-xl border-[3px] border-dashed border-[#2d2a26] flex flex-col justify-center relative">
-                        <p className="text-slate-800 font-black text-sm md:text-base mb-1 flex items-center gap-1"><span>💡</span> 提示與狀態：</p>
-                        <p className="text-slate-700 text-xs md:text-sm font-bold leading-relaxed">{currentLevel.description}</p>
-                        {isMultiplayer && (
-                          <div className="mt-2 text-xs text-emerald-800 font-bold bg-emerald-200 p-1.5 rounded-lg border-2 border-emerald-500 shadow-sm">
-                            多人模式中，已停用「復原」功能以防同學畫面互搶。
-                          </div>
-                        )}
-                      </div>
+                    <div className="ml-auto flex gap-2 flex-wrap justify-end">
+                      {!isWon && !showSolution && ( <button onClick={handleShowSolution} className="px-2 md:px-4 py-1.5 bg-yellow-400 text-[#2d2a26] border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">💡 解答</button> )}
+                      {(engine === 'none' || isHost) && ( <button onClick={handleRegenerateRandom} className="px-2 md:px-4 py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">🎲 新題</button> )}
+                      {engine === 'none' && ( <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-2 md:px-4 py-1.5 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] disabled:opacity-50 disabled:shadow-none active:translate-y-1 active:shadow-none transition-all flex items-center gap-1 text-[#2d2a26]">↩️ <span className="hidden md:inline">復原</span></button> )}
+                      {(engine === 'none' || isHost) && ( <button onClick={handleReset} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">🔄 <span className="hidden md:inline">重置</span></button> )}
                     </div>
-
-                    {/* Full action row */}
-                    <div className="flex flex-wrap gap-2 items-center w-full bg-white/50 p-2 rounded-xl border-2 border-dashed border-[#2d2a26]">
-                      <span className="font-bold text-[#2d2a26] ml-1 text-sm md:text-base hidden sm:inline">選擇：</span>
-                      <select
-                        disabled={isMultiplayer && !isHost}
-                        value={currentLevelId}
-                        onChange={(e) => handleLevelChange(Number(e.target.value))}
-                        className={`px-2 py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-base outline-none shadow-[3px_3px_0px_#2d2a26] max-w-[140px] sm:max-w-none ${isMultiplayer && !isHost ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                      >
-                        {LEVELS.map(level => (
-                          <option key={level.id} value={level.id}>{level.name}</option>
-                        ))}
-                      </select>
-                      {isMultiplayer && !isHost && <span className="text-xs font-bold text-slate-700 bg-white/50 px-1 py-1 rounded">(僅房主可切換)</span>}
-
-                      <div className="ml-auto flex gap-2 flex-wrap justify-end">
-                         {!isWon && !showSolution && (
-                           <button onClick={handleShowSolution} className="px-2 md:px-4 py-1.5 bg-yellow-400 text-[#2d2a26] border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] hover:bg-yellow-500 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                             💡 解答
-                           </button>
-                         )}
-                         <button onClick={handleRegenerateRandom} className="px-2 md:px-4 py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] hover:bg-blue-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                           🎲 新題
-                         </button>
-                         <button onClick={handleUndo} disabled={history.length === 0 || isWon || isMultiplayer} className="px-2 md:px-4 py-1.5 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] disabled:opacity-50 disabled:shadow-none hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1 text-[#2d2a26]">
-                           ↩️ <span className="hidden md:inline">復原</span>
-                         </button>
-                         {(!isMultiplayer || isHost) && (
-                           <button onClick={handleReset} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] hover:bg-red-600 active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                             🔄 <span className="hidden md:inline">重置</span>
-                           </button>
-                         )}
-                         <div className="w-[2px] h-6 bg-[#2d2a26] opacity-30 mx-1 hidden md:block"></div>
-                         <button onClick={() => isMultiplayer ? disconnectMultiplayer() : setShowJoinModal(true)} className={`${isMultiplayer ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-400 hover:bg-emerald-500 text-[#2d2a26]'} text-white border-2 border-[#2d2a26] px-2 md:px-4 py-1.5 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1`}>
-                            {isMultiplayer ? "🔌 斷開" : "🌐 連線"}
-                         </button>
-                         <button onClick={handleGoHome} className="bg-white hover:bg-slate-100 text-[#2d2a26] border-2 border-[#2d2a26] px-2 md:px-4 py-1.5 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                            🏠 首頁
-                         </button>
-                      </div>
-                    </div>
-
-                 </div>
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {isMultiplayer && (
+            {engine !== 'none' && (
               <div className="px-4 py-2 bg-[#f4f1ea] border-b-[3px] border-[#2d2a26] flex flex-wrap gap-2 items-center z-10 shadow-inner shrink-0">
-                <span className="font-black text-[#2d2a26] text-sm">👥 線上玩家：</span>
-                {playersList.map((p, idx) => (
-                  <span 
-                    key={idx} 
-                    onClick={() => handlePlayerColorChange(p.id)}
-                    title="點擊更換顏色"
-                    className="px-2 py-0.5 rounded border-2 border-[#2d2a26] text-xs font-bold bg-white text-[#2d2a26] flex items-center shadow-sm cursor-pointer hover:bg-slate-100 transition-colors" 
-                    style={{ borderLeftColor: p.id === myPeerId ? '#2d2a26' : p.color, borderLeftWidth: '6px' }}
-                  >
-                    {p.name} {p.isHost && '👑'} {p.id === myPeerId && '(你)'}
-                  </span>
-                ))}
+                <span className="font-black text-[#2d2a26] text-sm">👥 參與玩家：</span>
+                {playersList.map(function(p, idx) {
+                  return (
+                    <span key={idx} onClick={function(){handlePlayerColorChange(p.id);}} title={p.id === (user ? user.uid : null) ? "這是你" : "點擊可為其更換顏色"} className="px-2 py-0.5 rounded border-2 border-[#2d2a26] text-xs font-bold bg-white text-[#2d2a26] flex items-center shadow-sm cursor-pointer hover:bg-slate-100 transition-colors" style={{ borderLeftColor: p.color, borderLeftWidth: '6px' }}>
+                      {p.name} {p.isHost && '👑'} {p.id === (user ? user.uid : null) && '(你)'}
+                    </span>
+                  );
+                })}
               </div>
             )}
 
             {!isHeaderCollapsed && (
               <div className="h-8 shrink-0 flex items-center justify-center bg-[#2d2a26] text-[#ffcc00] border-b-4 border-[#2d2a26] z-10 font-bold tracking-wide">
-                {message && <span className="animate-pulse">{message}</span>}
-                {!message && !isWon && <span className="text-xs md:text-sm hidden md:inline">支援滑鼠拖曳、滾輪縮放；右下角有縮放按鈕可供使用。</span>}
-                {!message && !isWon && <span className="text-xs md:text-sm md:hidden">點擊島嶼間空白處架橋。支援雙指縮放與拖曳。</span>}
+                <span className="text-xs md:text-sm hidden md:inline">支援滑鼠單指拖曳畫布、滾輪縮放；向下滑動畫布可自動收合選單。</span>
+                <span className="text-xs md:text-sm md:hidden">點擊島嶼間空白處架橋。支援雙指縮放與單指平移。</span>
               </div>
             )}
 
             <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffdfa]">
               
               <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto">
-                <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_#2d2a26] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">＋</button>
-                <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_#2d2a26] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">－</button>
-                <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-[#2d2a26] border-[3px] border-[#2d2a26] rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.5)] hover:bg-slate-800 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
+                <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">+</button>
+                <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">-</button>
+                <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-[#2d2a26] border-[3px] border-[#2d2a26] rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
               </div>
 
               <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative">
                 <div className="flex justify-center items-center min-w-max min-h-max m-auto pb-24 pr-20">
-                  <svg 
-                    viewBox={`0 0 ${svgWidthBase} ${svgHeightBase}`} 
-                    className="bg-transparent transition-transform duration-100 ease-out origin-center"
-                    style={{ width: `${svgWidthBase * zoomLevel}px`, height: `${svgHeightBase * zoomLevel}px`, touchAction: 'manipulation' }}
-                  >
-                    {renderGridLines()}
-                    {showSolution && currentLevel.solution && currentLevel.solution.map(renderSolutionBridge)}
-                    {bridges.map(renderBridge)}
-                    {currentLevel.islands.map(renderIsland)}
+                  <svg viewBox={`0 0 ${svgW} ${svgH}`} className="bg-transparent transition-transform duration-100 ease-out origin-center" style={{ width: `${svgW * zoomLevel}px`, height: `${svgH * zoomLevel}px`, touchAction: 'manipulation' }}>
+                    <g className="pointer-events-none opacity-10">
+                       {Array.from({length: gridWidth}).map(function(_, i) { return <line key={`v${i}`} x1={i*SCALE+PADDING} y1={PADDING} x2={i*SCALE+PADDING} y2={svgH - PADDING} stroke="#2d2a26" strokeWidth="1" />; })}
+                       {Array.from({length: gridHeight}).map(function(_, i) { return <line key={`h${i}`} x1={PADDING} y1={i*SCALE+PADDING} x2={svgW - PADDING} y2={i*SCALE+PADDING} stroke="#2d2a26" strokeWidth="1" />; })}
+                    </g>
+
+                    {showSolution && cLevel.solution && cLevel.solution.map(function(sol, idx) {
+                        const islandsMap = {}; islData.forEach(function(i) { islandsMap[i.id] = i; });
+                        const f = islandsMap[sol.from], t = islandsMap[sol.to];
+                        if (!f || !t) return null;
+                        return <line key={`sol-${idx}`} x1={f.x*SCALE+PADDING} y1={f.y*SCALE+PADDING} x2={t.x*SCALE+PADDING} y2={t.y*SCALE+PADDING} stroke="#ef4444" strokeWidth={sol.count*4} strokeOpacity="0.3" strokeDasharray="5,5" className="solution-line pointer-events-none" />;
+                    })}
+
+                    {bridges.map(function(b){
+                      const islMap = {}; islData.forEach(function(i){islMap[i.id]=i;});
+                      const f=islMap[b.from], t=islMap[b.to];
+                      if (!f || !t) return null;
+                      const x1=f.x*SCALE+PADDING, y1=f.y*SCALE+PADDING, x2=t.x*SCALE+PADDING, y2=t.y*SCALE+PADDING;
+                      
+                      let lineStroke = "#2d2a26"; let lineOpacity = 1;
+                      if (engine !== 'none' && b.count > 0 && b.owner && b.owner !== (user ? user.uid : null)) {
+                          const ownerObj = playersList.find(function(p){return p.id === b.owner;});
+                          lineStroke = ownerObj ? ownerObj.color : "#94a3b8"; 
+                          lineOpacity = 0.6; 
+                      }
+
+                      return (
+                        <g key={b.id} onClick={function(){ handleBridgeClick(b.id); }} className="cursor-pointer group">
+                          <rect x={Math.min(x1,x2)-15} y={Math.min(y1,y2)-15} width={Math.abs(x1-x2)+30} height={Math.abs(y1-y2)+30} fill="transparent" className="group-hover:fill-yellow-300/20 transition-colors" />
+                          {b.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all" />}
+                          {b.count === 2 && b.type === 'h' && ( <g><line x1={x1} y1={y1-5} x2={x2} y2={y2-5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/><line x1={x1} y1={y1+5} x2={x2} y2={y2+5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/></g> )}
+                          {b.count === 2 && b.type === 'v' && ( <g><line x1={x1-5} y1={y1} x2={x2-5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/><line x1={x1+5} y1={y1} x2={x2+5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/></g> )}
+                        </g>
+                      );
+                    })}
+
+                    {islData.map(function(i){
+                      const cx=i.x*SCALE+PADDING, cy=i.y*SCALE+PADDING, cur=islandCurrentCounts[i.id], s=cur===i.req, o=cur>i.req;
+                      return (
+                        <g key={i.id}>
+                          <circle cx={cx+3} cy={cy+3} r={ISLAND_RADIUS} fill="rgba(45,42,38,0.15)" />
+                          <circle cx={cx} cy={cy} r={ISLAND_RADIUS} fill={s?'#d1fae5':o?'#fee2e2':'#fff'} stroke={s?'#059669':o?'#dc2626':'#2d2a26'} strokeWidth="4" className="transition-colors duration-300" />
+                          <text x={cx} y={cy+2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none transition-colors duration-300" fill={s?'#065f46':o?'#991b1b':'#2d2a26'}>{i.req}</text>
+                        </g>
+                      );
+                    })}
                   </svg>
                 </div>
               </div>
             </div>
-            
           </div>
-          
+
           {isWon && !hideVictoryModal && (
             <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60]">
               <div className="pointer-events-auto bg-white rounded-2xl p-5 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUp relative">
-                <button onClick={() => setHideVictoryModal(true)} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
+                <button onClick={function(){setHideVictoryModal(true);}} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
                 <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
                 <h2 className="text-2xl md:text-3xl font-black text-[#2d2a26] mb-2 uppercase tracking-wide">PERFECT!</h2>
                 <p className="text-slate-600 mb-1 text-sm md:text-base font-bold">所有的島嶼都成功連結了！</p>
                 <p className="text-blue-600 mb-6 text-sm md:text-base font-bold border-b-[3px] border-dashed border-slate-300 pb-4">完成時間：{formatTime(elapsedTime)}</p>
                 <div className="flex justify-center gap-3">
-                  <button onClick={handleRegenerateRandom} className="px-5 py-3 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] font-black rounded-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all text-base md:text-lg">
-                    再來一局 ➔
-                  </button>
+                  {(engine === 'none' || isHost) && ( <button onClick={handleRegenerateRandom} className="px-5 py-3 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] font-black rounded-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all text-base md:text-lg">再來一局 ➔</button> )}
                 </div>
               </div>
             </div>
           )}
 
           {isWon && hideVictoryModal && (
-            <button onClick={() => setHideVictoryModal(false)} className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] z-50 hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0px_#2d2a26] transition-all font-black flex items-center gap-2 tracking-wide text-lg">
-              🏆 顯示成績
-            </button>
-          )}
-
-          {showJoinModal && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-              <div className="bg-white border-4 border-slate-800 rounded-2xl p-6 shadow-[10px_10px_0px_rgba(0,0,0,1)] w-full max-w-sm animate-fadeIn">
-                <h2 className="text-2xl font-black text-slate-800 mb-2 border-b-4 border-[#ffcc00] inline-block pb-1">🌐 多人連線</h2>
-                <p className="text-sm font-bold text-slate-600 mb-4">第一個輸入房號的人將成為「主機👑」，其他人輸入相同房號即可加入房間。</p>
-                
-                <div className="flex flex-col gap-3 mb-5">
-                  <div>
-                    <label className="block text-slate-800 font-bold text-sm mb-1">您的暱稱：</label>
-                    <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={(e) => setTempPlayerName(e.target.value)} className="w-full border-2 border-slate-800 rounded-lg p-2 font-bold text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] outline-none focus:bg-yellow-50" />
-                  </div>
-                  <div>
-                    <label className="block text-slate-800 font-bold text-sm mb-1">欲建立/加入的房號：</label>
-                    <input type="text" placeholder="例如：8888" value={tempRoomId} onChange={(e) => setTempRoomId(e.target.value)} className="w-full border-2 border-slate-800 rounded-lg p-2 font-bold text-base shadow-[3px_3px_0px_rgba(30,41,59,1)] outline-none focus:bg-yellow-50" />
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button onClick={() => setShowJoinModal(false)} className="flex-1 py-2 bg-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100">取消</button>
-                  <button onClick={() => { startMultiplayer(tempRoomId.trim(), tempPlayerName.trim()); setShowJoinModal(false); }} className="flex-1 py-2 bg-emerald-500 text-white border-2 border-slate-800 rounded-lg font-bold shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-emerald-600">進入房間</button>
-                </div>
-              </div>
-            </div>
+            <button onClick={function(){setHideVictoryModal(false);}} className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] z-50 hover:translate-y-[2px] transition-all font-black flex items-center gap-2 tracking-wide text-lg">🏆 顯示成績</button>
           )}
 
           {showSaveModal && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
               <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_#2d2a26] w-full max-w-md animate-fadeIn rotate-1">
                 <h2 className="text-2xl font-black text-[#2d2a26] mb-2 border-b-[4px] border-blue-500 inline-block pb-1">💾 存檔與讀檔</h2>
-                <p className="text-sm font-bold text-slate-600 mb-4">將進度轉換為代碼，下次上課貼上代碼即可恢復！</p>
-                
+                <p className="text-sm font-bold text-slate-600 mb-4">將進度轉換為代碼，下次貼上代碼即可恢復！</p>
                 <div className="mb-6">
-                  <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mb-3 text-base md:text-lg">
-                    產生進度代碼 (自動複製)
-                  </button>
+                  <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all mb-3 text-base md:text-lg">產生進度代碼 (自動複製)</button>
                   <div className="relative">
-                    <textarea 
-                      id="saveCodeTextarea"
-                      value={saveCode} 
-                      onChange={(e) => setSaveCode(e.target.value)} 
-                      placeholder="點擊上方按鈕生成，或是手動貼上舊代碼至此處" 
-                      rows="4" 
-                      className="w-full border-[3px] border-[#2d2a26] rounded-xl p-3 pb-12 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white"
-                    />
-                    <button 
-                      onClick={handleQuickPaste}
-                      className="absolute bottom-3 right-3 bg-[#ffcc00] text-[#2d2a26] px-3 py-1.5 rounded-lg text-sm font-black border-[2px] border-[#2d2a26] hover:bg-[#e6b800] shadow-[2px_2px_0px_#2d2a26] transition-all active:translate-y-[1px] active:translate-x-[1px] active:shadow-none"
-                    >
-                      📋 快速貼上
-                    </button>
+                    <textarea id="saveCodeTextarea" value={saveCode} onChange={function(e){setSaveCode(e.target.value);}} placeholder="點擊上方按鈕生成，或是手動貼上舊代碼至此處" rows="4" className="w-full border-[3px] border-[#2d2a26] rounded-xl p-3 pb-12 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white" />
+                    <button onClick={handleQuickPaste} className="absolute bottom-3 right-3 bg-[#ffcc00] text-[#2d2a26] px-3 py-1.5 rounded-lg text-sm font-black border-[2px] border-[#2d2a26] hover:bg-[#e6b800] shadow-[2px_2px_0px_#2d2a26] transition-all active:translate-y-[1px]">📋 快速貼上</button>
                   </div>
                 </div>
-
                 <div className="flex gap-4">
-                  <button onClick={() => setShowSaveModal(false)} className="flex-1 py-3 bg-white border-[3px] border-[#2d2a26] rounded-xl font-black text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">關閉</button>
-                  <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all">載入代碼</button>
+                  <button onClick={function(){setShowSaveModal(false);}} className="flex-1 py-3 bg-white border-[3px] border-[#2d2a26] rounded-xl font-black text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all">關閉</button>
+                  <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all">載入代碼</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 全域浮動輕提示 (Toast) */}
-          {toastMsg && (
-            <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-[#2d2a26] text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] animate-slideUpFade whitespace-nowrap border-[3px] border-[#fffdfa]">
-              {toastMsg}
-            </div>
-          )}
-          
+          {toastMsg && <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-[#2d2a26] text-white px-6 py-3 rounded-full font-bold z-[100] border-[3px] border-[#fffdfa] shadow-xl animate-fadeIn">{toastMsg}</div>}
         </div>
       );
     }
-
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<HashiGame />);
   </script>
