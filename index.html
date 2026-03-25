@@ -93,7 +93,7 @@
 
     const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
-    // === 關卡設定 (無限隨機題庫) ===
+    // === 關卡設定 ===
     const LEVELS = [
       { id: 1, name: "🎲 隨機 (5x5 幼幼班)", width: 5, height: 5, description: "最簡單的暖身關卡，試著連連看。" },
       { id: 2, name: "🎲 隨機 (10x10 標準)", width: 10, height: 10, description: "標準難度，注意所有島嶼都要連通喔！" },
@@ -119,7 +119,6 @@
       const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; 
       const area = width * height;
       
-      // 大幅提高島嶼目標密度 (約 35% 佔比)
       let targetIslandCount = Math.floor(area * 0.35);
       let maxAttempts = area * 50;
       let attempts = 0;
@@ -150,14 +149,12 @@
 
         if (hitType === 'island') {
             if (dist < 2) continue; 
-            // 提高連接現有島嶼的機率，增加網狀結構
             if (Math.random() < 0.8) { target_d = dist; targetIslandObj = hitObj; } 
             else continue;
         } else if (hitType === 'wall') {
             if (dist < 3) continue; 
             let max_possible = dist - 1;
             let pool = [];
-            // 強烈偏好生成「短橋」，讓島嶼更密集
             for (let i = 2; i <= max_possible; i++) { 
               pool.push(i); 
               if (i <= 3) { pool.push(i); pool.push(i); } 
@@ -172,7 +169,6 @@
 
         if (!targetIslandObj) {
             let tooClose = false;
-            // 嚴格檢查上下左右不能相鄰
             const orthoDirs = [[0,1], [1,0], [0,-1], [-1,0]];
             for (let od of orthoDirs) {
                 let cx = newX + od[0], cy = newY + od[1];
@@ -180,7 +176,6 @@
                     if (grid[cy][cx] && grid[cy][cx].type === 'island') tooClose = true;
                 }
             }
-            // 放寬斜角檢查：只有小機率排斥斜角相鄰，創造更高密度
             if (!tooClose) {
                 const diagDirs = [[1,1], [1,-1], [-1,1], [-1,-1]];
                 for (let dd of diagDirs) {
@@ -190,7 +185,6 @@
                     }
                 }
             }
-
             if (tooClose) continue;
 
             targetIslandObj = { id: islandId++, x: newX, y: newY, req: 0 };
@@ -209,7 +203,6 @@
         }
       }
 
-      // 階段二：交叉連接掃描 (極大化網路的迴路)
       for (let i = 0; i < islands.length; i++) {
           let source = islands[i];
           for (let d = 0; d < dirs.length; d++) {
@@ -230,7 +223,6 @@
                   let existingBridge = topologyBridges.find(function(b) {
                       return (b.from === source.id && b.to === hitObj.id) || (b.to === source.id && b.from === hitObj.id);
                   });
-                  // 85% 超高機率將「看得到」的島嶼連接起來
                   if (!existingBridge && Math.random() < 0.85) {
                       topologyBridges.push({ from: source.id, to: hitObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 });
                       for (let j = 1; j < dist; j++) grid[source.y + dir[1] * j][source.x + dir[0] * j] = { type: 'bridge' };
@@ -293,8 +285,7 @@
 
       // === 基本狀態 ===
       const [user, setUser] = useState(null);
-      const [authError, setAuthError] = useState(""); // 記錄 Firebase Auth 錯誤
-      
+      const [authError, setAuthError] = useState(""); 
       const [screen, setScreen] = useState('home');
       const [engine, setEngine] = useState('none');
       const [currentLevelId, setCurrentLevelId] = useState(2); 
@@ -329,6 +320,8 @@
       const [titleClicks, setTitleClicks] = useState(0);
       const [playersList, setPlayersList] = useState([]);
       const [isConnecting, setIsConnecting] = useState(false);
+
+      const isMultiplayer = engine !== 'none';
 
       // === Refs 突破閉包 ===
       const engineRef = useRef('none');
@@ -566,7 +559,6 @@
       };
 
       const setupFirebase = async (rId, pName, isCreating) => {
-        // 先攔截是否因為忘記開匿名登入而噴錯
         if (authError) { setIsConnecting(false); return showToast("⚠️ Firebase 設定錯誤: " + authError + " (請確認已開啟 Anonymous 匿名登入)"); }
         if (!user) { setIsConnecting(false); return showToast("⚠️ 伺服器連線中，請稍後"); }
         
@@ -615,8 +607,8 @@
           }, function(err) { showToast("⚠️ 網路波動，同步中..."); });
         } catch(e) { 
             setIsConnecting(false); switchToOffline();
-            if (e.message === "TIMEOUT") showToast("⚠️ 連線逾時！請確認 Firebase 後台已開放 Firestore 的寫入權限 (Rules)");
-            else showToast("⚠️ 雲端連線失敗: " + e.message);
+            if (e.message === "TIMEOUT") showToast("⚠️ 連線逾時！請確認 Firebase 後台已開放 Firestore 讀寫權限");
+            else showToast("⚠️ 雲端連線失敗，請檢查網路或權限");
         }
       };
 
@@ -797,6 +789,19 @@
       const handleZoomOut = () => setZoomLevel(function(prev){return Math.max(prev - 0.3, 0.4);});
       const handleZoomReset = () => setZoomLevel(1);
 
+      // === 網格與畫布尺寸計算 ===
+      const cLevel = randomLevelData || { islands: [], description: "" };
+      const islandsToRender = cLevel.islands || [];
+      const maxGridX = Math.max.apply(Math, islandsToRender.map(function(i) { return i.x; }).concat([6])); 
+      const maxGridY = Math.max.apply(Math, islandsToRender.map(function(i) { return i.y; }).concat([6]));
+      const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
+      const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
+      
+      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
+      const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
+      const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
+      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
+
       // === UI 渲染 ===
       if (screen === 'home') {
         return (
@@ -822,136 +827,110 @@
       if (screen === 'join') {
         return (
           <div className="h-screen w-screen flex flex-col items-center justify-center p-4 animate-fadeIn">
-            <div className="bg-white border-[4px] border-[#2d2a26] p-8 rounded-2xl shadow-[10px_10px_0px_#2d2a26] max-w-2xl w-full z-10">
+            <div className="bg-white border-[4px] border-[#2d2a26] p-8 rounded-2xl shadow-[10px_10px_0px_#2d2a26] max-w-2xl w-full z-10 transform rotate-1">
               <h2 onClick={function(){
-                const c = titleClicks + 1; setTitleClicks(c);
-                if (c >= 3 && !stableMode) { setStableMode(true); showToast("🛡️ 隱藏彩蛋：穩定雲端模式已開啟！(產生的代碼將有S)"); }
+                const newClicks = titleClicks + 1;
+                if (newClicks >= 3) {
+                  setStableMode(!stableMode);
+                  setTitleClicks(0);
+                } else {
+                  setTitleClicks(newClicks);
+                }
               }} className="text-2xl font-black mb-6 border-b-4 border-[#ffcc00] inline-block cursor-pointer select-none">🌐 多人連線選單</h2>
               
-              <div className="mb-6">
-                <label className="block text-[#2d2a26] font-bold text-sm mb-1 italic">第一步：設定顯示暱稱</label>
-                <input type="text" placeholder="輸入同學認得的名字" value={tempPlayerName} onChange={function(e){setTempPlayerName(e.target.value);}} disabled={isConnecting} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-bold bg-yellow-50 outline-none focus:ring-2 ring-[#ffcc00] disabled:opacity-50" />
+              <div className="mb-6 bg-white p-4 rounded-lg border-2 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)]">
+                <label className="block text-[#2d2a26] font-bold text-sm mb-2">第一步：設定顯示暱稱</label>
+                <input type="text" placeholder="輸入同學認得的名字" value={tempPlayerName} onChange={function(e){setTempPlayerName(e.target.value);}} disabled={isConnecting} className="w-full border-2 border-[#2d2a26] rounded-md p-3 font-bold bg-yellow-50 outline-none focus:ring-2 ring-[#ffcc00] disabled:opacity-50" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="border-t-4 md:border-t-0 md:border-r-4 border-dashed border-slate-200 pt-4 md:pt-0 md:pr-6 flex flex-col h-full">
+                <div className="border-t-4 md:border-t-0 md:border-r-4 border-dashed border-slate-300 pt-4 md:pt-0 md:pr-6 flex flex-col h-full">
                    <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-[#2d2a26]">👑 建立對局大廳</h3>
                    <p className="text-xs text-slate-500 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供同學加入。</p>
                    <div className="mt-auto">
-                     {stableMode && <div className="text-xs font-bold text-emerald-600 mb-2 animate-pulse">✓ 雲端模式準備就緒</div>}
-                     <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase">
-                       {isConnecting ? "大廳建立中..." : "發起多人對局"}
+                     {stableMode && <div className="text-xs font-black text-emerald-600 mb-2 animate-pulse">✓ 雲端模式準備就緒</div>}
+                     <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase">
+                       {isConnecting ? "建立中..." : "發起多人對局"}
                      </button>
                    </div>
                 </div>
 
                 <div className="pt-4 md:pt-0 flex flex-col h-full">
                    <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-[#2d2a26]">👤 參與現有對局</h3>
-                   <p className="text-xs text-slate-500 mb-2 font-bold leading-relaxed">請輸入主機分派的 4 碼 (或 S 開頭) 邀請碼：</p>
-                   <input type="text" maxLength="5" placeholder="輸入邀請碼" value={tempRoomId} onChange={function(e){setTempRoomId(e.target.value.toUpperCase());}} disabled={isConnecting} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase shadow-[3px_3px_0px_#2d2a26] disabled:opacity-50" />
-                   <button onClick={joinExistingGame} disabled={isConnecting} className="w-full py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mt-auto disabled:opacity-50 disabled:cursor-not-allowed uppercase">
-                     {isConnecting ? "連線加入中..." : "參與對局連線"}
+                   <p className="text-xs text-slate-500 mb-2 font-bold leading-relaxed">請輸入主機分派的 4 碼邀請碼：</p>
+                   <input type="text" maxLength="5" placeholder="邀請碼" value={tempRoomId} onChange={function(e){setTempRoomId(e.target.value.toUpperCase());}} disabled={isConnecting} className="w-full border-4 border-[#2d2a26] rounded-xl p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase shadow-[4px_4px_0px_rgba(30,41,59,1)] disabled:opacity-50" />
+                   <button onClick={joinExistingGame} disabled={isConnecting} className="w-full py-3 bg-emerald-400 text-slate-900 border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all mt-auto disabled:opacity-50 disabled:cursor-not-allowed uppercase">
+                     {isConnecting ? "加入中..." : "參與對局連線"}
                    </button>
                 </div>
               </div>
 
-              <button onClick={function(){setScreen('home');}} disabled={isConnecting} className="mt-8 w-full text-slate-400 font-bold hover:text-[#2d2a26] hover:underline text-center transition-colors disabled:opacity-50">取消返回主選單</button>
+              <button onClick={function(){setScreen('home');}} disabled={isConnecting} className="mt-8 w-full text-slate-400 font-bold hover:text-slate-800 hover:underline text-center transition-colors disabled:opacity-50">取消返回主選單</button>
             </div>
-            {toastMsg && <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-[#2d2a26] text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] border-[3px] border-[#fffdfa] animate-fadeIn">{toastMsg}</div>}
+            {toastMsg && <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] border-[3px] border-white animate-slideUpFade">{toastMsg}</div>}
           </div>
         );
       }
 
-      const cLevel = randomLevelData || { islands: [], description: "" };
-      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
-      const islData = cLevel.islands || [];
-      const gridWidth = cLevel.width || 10;
-      const gridHeight = cLevel.height || 10;
-      const svgW = gridWidth * SCALE + PADDING * 2;
-      const svgH = gridHeight * SCALE + PADDING * 2;
-      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
-
       return (
-        <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans overflow-hidden animate-fadeIn">
-          <div className="w-full max-w-[1200px] bg-[#fffdfa] rounded-xl border-4 border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] flex flex-col h-full relative z-10 overflow-hidden">
+        <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans relative" style={{ backgroundColor: '#fdf5e6', backgroundImage: 'radial-gradient(#d3c5ab 2px, transparent 2px)', backgroundSize: '12px 12px' }}>
+          <div className="w-full max-w-[1200px] bg-[#fffaf0] rounded-xl border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,1)] flex flex-col h-full relative z-10 overflow-hidden">
             
-            <div className={`bg-[#ffcc00] border-b-4 border-[#2d2a26] text-[#2d2a26] shrink-0 z-20 relative transition-all duration-300 ease-in-out ${isHeaderCollapsed ? 'p-2' : 'p-3 md:p-4'}`}>
-              <div className={`flex flex-wrap items-center justify-between gap-2 w-full`}>
-                <div className="flex items-center gap-3 flex-wrap">
-                   <h1 className={`font-black tracking-tight uppercase transition-all duration-500 ${isHeaderCollapsed ? 'text-lg px-2' : 'text-2xl md:text-3xl'}`}>🌉 數橋</h1>
-                   <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 md:px-3 py-1 rounded-lg font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-sm md:text-base">⏱ {formatTime(elapsedTime)}</div>
-                   {engineRef.current !== 'none' && ( <span className="bg-emerald-400 text-[#2d2a26] px-2 py-1 rounded-lg border-2 border-[#2d2a26] font-black text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] animate-pulse flex items-center gap-1">{isHostRef.current ? '👑 主機' : '👤 玩家'} | 代碼: {roomId} {engineRef.current === 'firebase' && '☁️'}</span> )}
-                </div>
+            <div className={`bg-[#ffcc00] border-b-4 border-slate-800 shrink-0 z-20 relative transition-all duration-300 ease-in-out px-2 md:px-4 py-2 flex flex-col gap-2`}>
+               <div className="flex items-center justify-between gap-1 w-full">
+                  <div className="flex items-center gap-2 flex-wrap">
+                     <h1 className="font-black tracking-tight uppercase text-lg md:text-2xl text-[#2d2a26] flex items-center gap-1">🌉<span className="hidden sm:inline">數橋</span></h1>
+                     <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 py-1 rounded-md font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-xs md:text-sm whitespace-nowrap">⏱ {formatTime(elapsedTime)}</div>
+                     {isMultiplayer && ( <span className="bg-emerald-400 text-slate-900 px-2 py-1 rounded-md border-2 border-slate-800 font-black text-xs md:text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] flex items-center gap-1 whitespace-nowrap">{isHostRef.current ? '👑 主機' : '👤 玩家'} | 代碼: {roomId} {engineRef.current === 'firebase' && '☁️'}</span> )}
+                  </div>
+                  <button onClick={function(){setIsHeaderCollapsed(!isHeaderCollapsed);}} className="flex px-2 md:px-3 py-1 bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800 items-center gap-1 whitespace-nowrap">{isHeaderCollapsed ? '🔽 展開規則' : '🔼 縮小面板'}</button>
+               </div>
 
-                <div className="flex items-center gap-2 flex-wrap ml-auto justify-end">
-                   <div className={`flex items-center gap-1 md:gap-2 overflow-hidden transition-all duration-500 ease-in-out ${isHeaderCollapsed ? 'max-w-[500px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none'}`}>
-                     <div className="flex items-center gap-1 md:gap-2 w-max">
-                       <select disabled={engineRef.current !== 'none' && !isHostRef.current} value={currentLevelId} onChange={function(e){handleLevelChange(Number(e.target.value));}} className={`px-2 py-1 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-sm outline-none shadow-[2px_2px_0px_#2d2a26] max-w-[120px] sm:max-w-none ${engineRef.current !== 'none' && !isHostRef.current ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
-                         {LEVELS.map(function(level){return <option key={level.id} value={level.id}>{level.name}</option>;})}
-                       </select>
-                       {!isWon && hasSolution && !showSolution && ( <button onClick={handleShowSolution} className="px-2 py-1 bg-yellow-400 text-[#2d2a26] border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]" title="解答">💡</button> )}
-                       <button onClick={handleRegenerateRandom} className="px-2 py-1 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]" title="新題">🎲</button>
-                       {engineRef.current === 'none' && <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-2 py-1 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26] disabled:opacity-50">↩️</button>}
-                       <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]">🔄</button>
-                     </div>
-                   </div>
-                   <button onClick={function(){setShowSaveModal(true);}} className="px-2 md:px-3 py-1 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm md:text-base shadow-[2px_2px_0px_#2d2a26] hover:bg-blue-600 flex items-center gap-1" title="存檔/讀檔">💾 <span className="hidden md:inline">存檔</span></button>
-                   <button onClick={function(){setIsHeaderCollapsed(!isHeaderCollapsed);}} className="px-2 md:px-3 py-1 bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm md:text-base shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800 flex items-center gap-1">{isHeaderCollapsed ? '🔽 展開' : '🔼 縮小'}</button>
-                </div>
-              </div>
-
-              <div className={`w-full overflow-hidden transition-all duration-500 ease-in-out origin-top ${isHeaderCollapsed ? 'max-h-0 opacity-0 scale-y-95' : 'max-h-[1000px] opacity-100 scale-y-100 mt-2'}`}>
-                 <div className="px-2 pb-2 md:px-4 md:pb-4 flex flex-col gap-2">
-                    <div className="bg-white border-[3px] border-[#2d2a26] rounded-xl p-3 md:p-4 text-slate-800 shadow-[4px_4px_0px_#2d2a26] flex flex-col md:flex-row gap-4 mb-1 animate-fadeIn">
-                      <div className="flex-1">
-                        <h3 className="text-base md:text-lg font-black mb-1 md:mb-2 border-b-[3px] border-[#ffcc00] inline-block pb-1">📜 遊戲四大規則</h3>
-                        <ol className="list-decimal list-outside ml-5 space-y-1 md:space-y-1.5 text-xs md:text-sm leading-relaxed font-bold">
-                          <li>每個圓圈是一座「島」，數字代表需要幾座橋樑。</li>
-                          <li>橋樑必須是垂直或水平方向。</li>
-                          <li>橋樑之間絕對不能交叉或重疊。</li>
-                          <li>兩座島之間最多架設 2 座橋，且完成時所有島嶼必須全部連通。</li>
+               <div className={`w-full overflow-hidden transition-all duration-500 ease-in-out origin-top flex flex-col gap-2 ${isHeaderCollapsed ? 'max-h-0 opacity-0 scale-y-95' : 'max-h-[500px] opacity-100 scale-y-100'}`}>
+                  <div className="bg-white border-[3px] border-[#2d2a26] rounded-xl p-3 text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] flex flex-col md:flex-row gap-3">
+                     <div className="flex-1">
+                        <h3 className="text-sm md:text-base font-black mb-1 border-b-[3px] border-[#ffcc00] inline-block pb-0.5">📜 遊戲四大規則</h3>
+                        <ol className="list-decimal list-outside ml-4 space-y-1 text-xs md:text-sm leading-relaxed font-bold">
+                           <li>每個圓圈是一座「島」，數字代表需要幾座橋樑。</li>
+                           <li>橋樑必須是垂直或水平方向。</li>
+                           <li>橋樑之間絕對不能交叉或重疊。</li>
+                           <li>兩座島之間最多架設 2 座橋，且完成時所有島嶼必須全部連通。</li>
                         </ol>
-                      </div>
-                      <div className="md:w-1/3 bg-[#ffcc00]/20 p-3 rounded-xl border-[3px] border-dashed border-[#2d2a26] flex flex-col justify-center relative">
-                        <p className="text-slate-800 font-black text-sm md:text-base mb-1 flex items-center gap-1"><span>💡</span> 提示與狀態：</p>
+                     </div>
+                     <div className="md:w-1/3 bg-[#ffcc00]/20 p-2 md:p-3 rounded-xl border-[3px] border-dashed border-[#2d2a26] flex flex-col justify-center">
+                        <p className="text-[#2d2a26] font-black text-xs md:text-sm mb-1 flex items-center gap-1"><span>💡</span> 提示與狀態：</p>
                         <p className="text-slate-700 text-xs md:text-sm font-bold leading-relaxed">{cLevel.description}</p>
-                        {engineRef.current !== 'none' && ( <div className="mt-2 text-xs text-emerald-800 font-bold bg-emerald-200 p-1.5 rounded-lg border-2 border-emerald-500 shadow-sm">連線對戰中，「復原」功能已停用。</div> )}
-                      </div>
-                    </div>
+                     </div>
+                  </div>
+               </div>
 
-                    <div className="flex flex-wrap gap-2 items-center w-full bg-white/50 p-2 rounded-xl border-[3px] border-dashed border-[#2d2a26] animate-fadeIn">
-                      <span className="font-bold text-[#2d2a26] ml-1 text-sm md:text-base hidden sm:inline">選擇題型：</span>
-                      <select disabled={engineRef.current !== 'none' && !isHostRef.current} value={currentLevelId} onChange={function(e){handleLevelChange(Number(e.target.value));}} className={`px-2 py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-base outline-none shadow-[3px_3px_0px_#2d2a26] max-w-[140px] sm:max-w-none ${engineRef.current !== 'none' && !isHostRef.current ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
-                        {LEVELS.map(function(level){return <option key={level.id} value={level.id}>{level.name}</option>;})}
-                      </select>
-                      {engineRef.current !== 'none' && !isHostRef.current && <span className="text-xs font-bold text-slate-700 bg-white/50 px-1 py-1 rounded">(僅房主可更換題目)</span>}
-                      
-                      <div className="ml-auto flex gap-2 flex-wrap justify-end">
-                         {!isWon && hasSolution && !showSolution && ( <button onClick={handleShowSolution} className="px-2 md:px-4 py-1.5 bg-yellow-400 text-[#2d2a26] border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">💡 解答</button> )}
-                         <button onClick={handleRegenerateRandom} className="px-2 md:px-4 py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">🎲 新題</button>
-                         {engineRef.current === 'none' && ( <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-2 md:px-4 py-1.5 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] disabled:opacity-50 disabled:shadow-none active:translate-y-1 active:shadow-none transition-all flex items-center gap-1 text-[#2d2a26]">↩️ <span className="hidden md:inline">復原</span></button> )}
-                         <button onClick={handleReset} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">🔄 <span className="hidden md:inline">重置</span></button>
-                         <div className="w-[2px] h-6 bg-[#2d2a26] opacity-30 mx-1 hidden md:block"></div>
-                         <button onClick={handleGoHome} className="bg-white hover:bg-slate-100 text-[#2d2a26] border-2 border-[#2d2a26] px-2 md:px-4 py-1.5 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                           {engineRef.current === 'none' ? '🏠 回首頁' : (isHostRef.current ? '🔌 解散房間' : '🔌 退出連線')}
-                         </button>
-                      </div>
-                    </div>
-                 </div>
-              </div>
+               <div className="flex flex-wrap gap-1.5 items-center justify-between w-full">
+                  <select disabled={isMultiplayer && !isHostRef.current} value={currentLevelId} onChange={function(e){handleLevelChange(Number(e.target.value));}} className="px-1 py-1 md:px-2 md:py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-sm outline-none shadow-[2px_2px_0px_#2d2a26] w-auto cursor-pointer max-w-[130px] sm:max-w-none truncate disabled:opacity-60 disabled:cursor-not-allowed">
+                     {LEVELS.map(function(level){return <option key={level.id} value={level.id}>{level.name}</option>;})}
+                  </select>
+                  
+                  <div className="flex gap-1 md:gap-2 flex-wrap items-center ml-auto">
+                     {!isWon && hasSolution && !showSolution && ( <button onClick={handleShowSolution} className="px-2 py-1 md:px-3 md:py-1.5 bg-yellow-400 text-[#2d2a26] border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="解答">💡<span className="hidden sm:inline">解答</span></button> )}
+                     <button onClick={handleRegenerateRandom} className="px-2 py-1 md:px-3 md:py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="新題">🎲<span className="hidden sm:inline">新題</span></button>
+                     {!isMultiplayer && ( <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-2 py-1 md:px-3 md:py-1.5 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] disabled:opacity-50 disabled:shadow-none active:translate-y-1 active:shadow-none transition-all flex items-center gap-1 text-[#2d2a26]" title="復原">↩️<span className="hidden sm:inline">復原</span></button> )}
+                     <button onClick={handleReset} className="px-2 py-1 md:px-3 md:py-1.5 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="重置">🔄<span className="hidden sm:inline">重置</span></button>
+                     <button onClick={function(){setShowSaveModal(true);}} className="px-2 py-1 md:px-3 md:py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="存檔/讀檔">💾<span className="hidden sm:inline">存檔</span></button>
+                     <button onClick={handleGoHome} className="bg-white text-[#2d2a26] border-2 border-[#2d2a26] px-2 py-1 md:px-3 md:py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="回首頁/斷線">{!isMultiplayer ? '🏠' : '🔌'}<span className="hidden sm:inline ml-1">{!isMultiplayer ? '回首頁' : '退出'}</span></button>
+                  </div>
+               </div>
             </div>
 
-            {engineRef.current !== 'none' && (
-              <div className="px-4 py-2 bg-[#f4f1ea] border-b-[3px] border-[#2d2a26] flex flex-wrap gap-2 items-center z-10 shadow-inner shrink-0">
-                <span className="font-black text-[#2d2a26] text-sm">👥 參與玩家：</span>
+            {isMultiplayer && (
+              <div className="px-4 py-2 bg-[#fffdfa] border-b-4 border-slate-800 flex flex-wrap gap-2 items-center z-10 shadow-inner shrink-0">
+                <span className="font-black text-slate-800 text-sm">👥 連線玩家：</span>
                 {playersList.map(function(p, idx) {
                   const isMe = p.id === myId;
                   return (
                     <span key={idx} 
                           onClick={function(){ if (!isMe) handlePlayerColorChange(p.id); }} 
-                          title={isMe ? "這是你 (自己畫的線固定為黑色)" : "點擊可切換該玩家的代表色"} 
-                          className={`px-2 py-0.5 rounded border-2 border-[#2d2a26] text-xs font-bold bg-white text-[#2d2a26] flex items-center shadow-sm ${!isMe ? 'cursor-pointer hover:bg-slate-100 transition-colors' : ''}`} 
-                          style={{ borderLeftColor: isMe ? '#2d2a26' : p.color, borderLeftWidth: '6px' }}>
+                          title={isMe ? "這是你 (自己畫的線固定為黑色)" : "點擊可為這位同學更換顏色"} 
+                          className={`px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-white text-slate-800 flex items-center shadow-[1px_1px_0px_rgba(30,41,59,1)] ${!isMe ? 'cursor-pointer hover:bg-slate-100 transition-colors' : ''}`} 
+                          style={{ borderLeftColor: isMe ? '#1e293b' : p.color, borderLeftWidth: '6px' }}>
                       {p.name} {p.isHost && '👑'} {isMe && '(你)'}
                     </span>
                   );
@@ -960,67 +939,76 @@
             )}
 
             {!isHeaderCollapsed && (
-              <div className="h-8 shrink-0 flex items-center justify-center bg-[#2d2a26] text-[#ffcc00] border-b-4 border-[#2d2a26] z-10 font-bold tracking-wide">
-                <span className="text-xs md:text-sm hidden md:inline">支援滑鼠單指拖曳畫布、滾輪縮放；向下滑動畫布可自動收合選單。</span>
-                <span className="text-xs md:text-sm md:hidden">點擊島嶼間空白處架橋。支援雙指縮放與單指平移。</span>
+              <div className="h-8 shrink-0 flex items-center justify-center bg-slate-800 text-white border-b-4 border-slate-800 z-10 font-bold tracking-wide">
+                <span className="text-xs md:text-sm hidden md:inline">支援滑鼠拖曳、滾輪縮放；向下滑動畫布可自動收合選單。</span>
+                <span className="text-xs md:text-sm md:hidden">點擊島嶼間空白處架橋。支援雙指縮放與平移。</span>
               </div>
             )}
 
-            <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffdfa]">
+            <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
               
               <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto">
-                <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">+</button>
-                <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-[3px] border-[#2d2a26] rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-[#2d2a26]">-</button>
-                <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-[#2d2a26] border-[3px] border-[#2d2a26] rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
+                <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">＋</button>
+                <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">－</button>
+                <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 border-2 border-slate-800 rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
               </div>
 
               <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative">
                 <div className="flex justify-center items-center min-w-max min-h-max m-auto pb-24 pr-20">
                   <svg viewBox={`0 0 ${svgW} ${svgH}`} className="bg-transparent transition-transform duration-100 ease-out origin-center" style={{ width: `${svgW * zoomLevel}px`, height: `${svgH * zoomLevel}px`, touchAction: 'manipulation' }}>
-                    <g className="pointer-events-none opacity-10">
-                       {Array.from({length: gridWidth}).map(function(_, i) { return <line key={`v${i}`} x1={i*SCALE+PADDING} y1={PADDING} x2={i*SCALE+PADDING} y2={svgH - PADDING} stroke="#2d2a26" strokeWidth="1" />; })}
-                       {Array.from({length: gridHeight}).map(function(_, i) { return <line key={`h${i}`} x1={PADDING} y1={i*SCALE+PADDING} x2={svgW - PADDING} y2={i*SCALE+PADDING} stroke="#2d2a26" strokeWidth="1" />; })}
-                    </g>
+                    <defs>
+                      <pattern id="grid" width={SCALE} height={SCALE} patternUnits="userSpaceOnUse">
+                        <path d={`M ${SCALE} 0 L 0 0 0 ${SCALE}`} fill="none" stroke="#e2e8f0" strokeWidth="1"/>
+                      </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#grid)" transform={`translate(${PADDING}, ${PADDING})`} className="opacity-50 pointer-events-none" />
 
                     {showSolution && cLevel.solution && cLevel.solution.map(function(sol, idx) {
-                        const islandsMap = {}; islData.forEach(function(i) { islandsMap[i.id] = i; });
+                        const islandsMap = {}; islandsToRender.forEach(function(i) { islandsMap[i.id] = i; });
                         const f = islandsMap[sol.from], t = islandsMap[sol.to];
                         if (!f || !t) return null;
                         return <line key={`sol-${idx}`} x1={f.x*SCALE+PADDING} y1={f.y*SCALE+PADDING} x2={t.x*SCALE+PADDING} y2={t.y*SCALE+PADDING} stroke="#ef4444" strokeWidth={sol.count*4} strokeOpacity="0.3" strokeDasharray="5,5" className="solution-line pointer-events-none" />;
                     })}
 
                     {bridges.map(function(b){
-                      const islMap = {}; islData.forEach(function(i){islMap[i.id]=i;});
+                      const islMap = {}; islandsToRender.forEach(function(i){islMap[i.id]=i;});
                       const f=islMap[b.from], t=islMap[b.to];
                       if (!f || !t) return null;
                       const x1=f.x*SCALE+PADDING, y1=f.y*SCALE+PADDING, x2=t.x*SCALE+PADDING, y2=t.y*SCALE+PADDING;
                       
-                      let lineStroke = "#2d2a26"; // 自己劃的線預設黑色
+                      let lineStroke = "#1e293b"; 
                       let lineOpacity = 1;
                       
-                      if (engineRef.current !== 'none' && b.count > 0 && b.owner && b.owner !== myId) {
+                      if (isMultiplayer && b.count > 0 && b.owner && b.owner !== myId) {
                           const ownerObj = playersList.find(function(p){return p.id === b.owner;});
                           lineStroke = ownerObj ? ownerObj.color : "#94a3b8"; 
-                          lineOpacity = 0.6; 
+                          lineOpacity = 0.5; 
                       }
 
                       return (
                         <g key={b.id} onClick={function(){ handleBridgeClick(b.id); }} className="cursor-pointer group">
-                          <rect x={Math.min(x1,x2)-15} y={Math.min(y1,y2)-15} width={Math.abs(x1-x2)+30} height={Math.abs(y1-y2)+30} fill="transparent" className="group-hover:fill-yellow-300/20 transition-colors" />
-                          {b.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all" />}
-                          {b.count === 2 && b.type === 'h' && ( <g><line x1={x1} y1={y1-5} x2={x2} y2={y2-5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/><line x1={x1} y1={y1+5} x2={x2} y2={y2+5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/></g> )}
-                          {b.count === 2 && b.type === 'v' && ( <g><line x1={x1-5} y1={y1} x2={x2-5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/><line x1={x1+5} y1={y1} x2={x2+5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity}/></g> )}
+                          {b.type === 'h' ? (
+                            <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                          ) : (
+                            <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                          )}
+                          {b.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />}
+                          {b.count === 2 && b.type === 'h' && ( <g><line x1={x1} y1={y1-5} x2={x2} y2={y2-5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /><line x1={x1} y1={y1+5} x2={x2} y2={y2+5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /></g> )}
+                          {b.count === 2 && b.type === 'v' && ( <g><line x1={x1-5} y1={y1} x2={x2-5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /><line x1={x1+5} y1={y1} x2={x2+5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /></g> )}
                         </g>
                       );
                     })}
 
-                    {islData.map(function(i){
-                      const cx=i.x*SCALE+PADDING, cy=i.y*SCALE+PADDING, cur=islandCurrentCounts[i.id], s=cur===i.req, o=cur>i.req;
+                    {islandsToRender.map(function(island){
+                      const cx = island.x * SCALE + PADDING; const cy = island.y * SCALE + PADDING; const current = islandCurrentCounts[island.id];
+                      let strokeColor = "#1e293b"; let bgColor = "#ffffff"; let textColor = "#1e293b";
+                      if (current === island.req) { strokeColor = "#059669"; bgColor = "#d1fae5"; textColor = "#065f46"; } 
+                      else if (current > island.req) { strokeColor = "#dc2626"; bgColor = "#fee2e2"; textColor = "#991b1b"; }
                       return (
-                        <g key={i.id}>
-                          <circle cx={cx+3} cy={cy+3} r={ISLAND_RADIUS} fill="rgba(45,42,38,0.15)" />
-                          <circle cx={cx} cy={cy} r={ISLAND_RADIUS} fill={s?'#d1fae5':o?'#fee2e2':'#fff'} stroke={s?'#059669':o?'#dc2626':'#2d2a26'} strokeWidth="4" className="transition-colors duration-300" />
-                          <text x={cx} y={cy+2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none transition-colors duration-300" fill={s?'#065f46':o?'#991b1b':'#2d2a26'}>{i.req}</text>
+                        <g key={`island-${island.id}`}>
+                          <circle cx={cx + 3} cy={cy + 3} r={ISLAND_RADIUS} fill="rgba(30,41,59,0.2)" />
+                          <circle cx={cx} cy={cy} r={ISLAND_RADIUS} fill={bgColor} stroke={strokeColor} strokeWidth="4" className="transition-colors duration-300" />
+                          <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none transition-colors duration-300" fill={textColor}>{island.req}</text>
                         </g>
                       );
                     })}
@@ -1031,7 +1019,7 @@
           </div>
 
           {isWon && !hideVictoryModal && (
-            <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60] bg-slate-900/20 backdrop-blur-[2px]">
+            <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60] bg-slate-900/20 backdrop-blur-[2px] animate-fadeIn">
               <div className="pointer-events-auto bg-white rounded-2xl p-6 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUpCenter relative">
                 <button onClick={function(){setHideVictoryModal(true);}} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
                 <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
@@ -1053,25 +1041,25 @@
 
           {showSaveModal && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_#2d2a26] w-full max-w-md animate-popUp">
-                <h2 className="text-2xl font-black text-[#2d2a26] mb-2 border-b-[4px] border-blue-500 inline-block pb-1">💾 存檔與讀檔</h2>
+              <div className="bg-[#fffdfa] border-4 border-slate-800 rounded-2xl p-6 shadow-[10px_10px_0px_rgba(30,41,59,1)] w-full max-w-md animate-popUp">
+                <h2 className="text-2xl font-black text-slate-800 mb-2 border-b-4 border-blue-500 inline-block pb-1">💾 存檔與讀檔</h2>
                 <p className="text-sm font-bold text-slate-600 mb-4">將進度轉換為代碼，下次貼上代碼即可恢復！</p>
                 <div className="mb-6">
-                  <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all mb-3 text-base md:text-lg">產生進度代碼 (自動複製)</button>
+                  <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all mb-3 text-base md:text-lg">產生進度代碼 (自動複製)</button>
                   <div className="relative">
-                    <textarea id="saveCodeTextarea" value={saveCode} onChange={function(e){setSaveCode(e.target.value);}} placeholder="點擊上方按鈕生成，或是手動貼上舊代碼至此處" rows="4" className="w-full border-[3px] border-[#2d2a26] rounded-xl p-3 pb-12 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white" />
-                    <button onClick={handleQuickPaste} className="absolute bottom-3 right-3 bg-[#ffcc00] text-[#2d2a26] px-3 py-1.5 rounded-lg text-sm font-black border-[2px] border-[#2d2a26] hover:bg-[#e6b800] shadow-[2px_2px_0px_#2d2a26] transition-all active:translate-y-[1px]">📋 快速貼上</button>
+                    <textarea id="saveCodeTextarea" value={saveCode} onChange={function(e){setSaveCode(e.target.value);}} placeholder="點擊上方按鈕生成，或是手動貼上舊代碼至此處" rows="4" className="w-full border-4 border-slate-800 rounded-xl p-3 pb-12 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white" />
+                    <button onClick={handleQuickPaste} className="absolute bottom-3 right-3 bg-[#ffcc00] text-slate-900 px-3 py-1.5 rounded-lg text-sm font-black border-2 border-slate-800 hover:bg-[#e6b800] shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all active:translate-y-1 active:shadow-none">📋 快速貼上</button>
                   </div>
                 </div>
                 <div className="flex gap-4">
-                  <button onClick={function(){setShowSaveModal(false);}} className="flex-1 py-3 bg-white border-[3px] border-[#2d2a26] rounded-xl font-black text-[#2d2a26] shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all">關閉</button>
-                  <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all">載入代碼</button>
+                  <button onClick={function(){setShowSaveModal(false);}} className="flex-1 py-3 bg-white border-4 border-slate-800 rounded-xl font-black text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all">關閉</button>
+                  <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-slate-900 border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all">載入代碼</button>
                 </div>
               </div>
             </div>
           )}
 
-          {toastMsg && <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-[#2d2a26] text-white px-6 py-3 rounded-full font-bold z-[100] border-[3px] border-[#fffdfa] shadow-xl animate-fadeIn">{toastMsg}</div>}
+          {toastMsg && <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] border-[3px] border-white animate-slideUpFade">{toastMsg}</div>}
         </div>
       );
     }
