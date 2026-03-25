@@ -291,13 +291,19 @@
       const playerIdRef = useRef(Math.random().toString(36).substring(2, 12));
       const myId = playerIdRef.current;
 
+      // 確保初始化的時候，地圖與橋樑的資料來源完全一致
+      const initialDataRef = useRef(null);
+      if (!initialDataRef.current) {
+        initialDataRef.current = generateRandomHashi(LEVELS[1]);
+      }
+
       // === 基本狀態 ===
       const [user, setUser] = useState(null);
       const [screen, setScreen] = useState('home');
       const [engine, setEngine] = useState('none');
       const [currentLevelId, setCurrentLevelId] = useState(2); 
-      const [randomLevelData, setRandomLevelData] = useState(() => generateRandomHashi(LEVELS[1]));
-      const [bridges, setBridges] = useState(() => generateEmptyBridges(generateRandomHashi(LEVELS[1])));
+      const [randomLevelData, setRandomLevelData] = useState(initialDataRef.current);
+      const [bridges, setBridges] = useState(() => generateEmptyBridges(initialDataRef.current));
       const [history, setHistory] = useState([]);
       const [isWon, setIsWon] = useState(false);
       const [hideVictoryModal, setHideVictoryModal] = useState(false);
@@ -1016,8 +1022,8 @@
           </div>
 
           {isWon && !hideVictoryModal && (
-            <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-[60] bg-slate-900/20 backdrop-blur-[2px]">
-              <div className="pointer-events-auto bg-white rounded-2xl p-6 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUp relative">
+            <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60] bg-slate-900/20 backdrop-blur-[2px]">
+              <div className="pointer-events-auto bg-white rounded-2xl p-6 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUpCenter relative">
                 <button onClick={function(){setHideVictoryModal(true);}} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
                 <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
                 <h2 className="text-2xl md:text-3xl font-black text-[#2d2a26] mb-2 uppercase tracking-wide">PERFECT!</h2>
