@@ -523,7 +523,7 @@
 
       // === 多人連線雙引擎核心 ===
       const startSinglePlayer = () => {
-        switchToOffline(); setScreen('game'); handleReset();
+        switchToOffline(); setScreen('game'); handleReset(); setIsHeaderCollapsed(false);
       };
 
       const initiateHostGame = () => {
@@ -806,28 +806,30 @@
       if (screen === 'home') {
         return (
           <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative overflow-hidden animate-fadeIn">
-            <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] p-10 rounded-2xl shadow-[8px_8px_0px_#2d2a26] text-center transform -rotate-1 w-full max-w-md z-10">
-              <h1 className="text-6xl font-black mb-6 flex justify-center gap-3">
-                <span className="bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform rotate-3 shadow-[4px_4px_0px_#2d2a26]">數</span>
-                <span className="bg-[#ffcc00] px-4 py-2 border-[4px] border-[#2d2a26] rounded-xl transform -rotate-2 shadow-[4px_4px_0px_#2d2a26]">橋</span>
-              </h1>
-              <div className="inline-block border-[3px] border-dashed border-[#2d2a26] rounded-xl px-6 py-2 mb-8 bg-white transform rotate-2">
-                <p className="text-[#2d2a26] font-black text-xl tracking-widest uppercase italic">Hashi Puzzle</p>
-              </div>
-              <div className="flex flex-col gap-4">
-                <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-[4px] border-[#2d2a26] rounded-xl font-black text-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform rotate-1">👤 單機挑戰</button>
-                <button onClick={function(){ setScreen('join'); }} className="w-full py-4 bg-emerald-400 border-[4px] border-[#2d2a26] rounded-xl font-black text-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all transform -rotate-1">🌐 多人對戰</button>
+            <div className="flex-1 flex flex-col justify-center w-full max-w-md items-center">
+              <div className="bg-[#fffaf0] border-4 border-slate-800 p-10 rounded-xl shadow-[8px_8px_0px_rgba(30,41,59,1)] w-full text-center relative transform -rotate-1 z-10">
+                 <h1 className="text-6xl font-black text-slate-800 mb-6 tracking-widest flex justify-center gap-3">
+                    <span className="inline-block bg-[#ffcc00] px-4 py-2 border-4 border-slate-800 rounded-xl transform rotate-3 shadow-[4px_4px_0px_rgba(30,41,59,1)]">數</span>
+                    <span className="inline-block bg-[#ffcc00] px-4 py-2 border-4 border-slate-800 rounded-xl transform -rotate-2 shadow-[4px_4px_0px_rgba(30,41,59,1)]">橋</span>
+                 </h1>
+                 <div className="inline-block border-[3px] border-dashed border-slate-800 rounded-xl px-6 py-2 mb-8 bg-white shadow-[4px_4px_0px_rgba(30,41,59,1)] transform rotate-2">
+                    <p className="text-slate-800 font-black text-xl tracking-widest uppercase italic">Hashi Puzzle</p>
+                 </div>
+                 <div className="flex flex-col gap-5">
+                    <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-4 border-slate-800 rounded-xl font-black text-xl text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform rotate-1">👤 單機挑戰</button>
+                    <button onClick={function(){ setScreen('join'); }} className="w-full py-4 bg-emerald-400 border-4 border-slate-800 rounded-xl font-black text-xl text-slate-900 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform -rotate-1">🌐 多人對戰</button>
+                 </div>
               </div>
             </div>
-            <div className="mt-8 font-black opacity-30 text-sm z-10">葉大帥@2026</div>
+            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">葉大帥@2026</div>
           </div>
         );
       }
 
       if (screen === 'join') {
         return (
-          <div className="h-screen w-screen flex flex-col items-center justify-center p-4 animate-fadeIn">
-            <div className="bg-white border-[4px] border-[#2d2a26] p-8 rounded-2xl shadow-[10px_10px_0px_#2d2a26] max-w-2xl w-full z-10 transform rotate-1">
+          <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative animate-fadeIn">
+            <div className="bg-[#fffaf0] border-4 border-slate-800 p-8 rounded-xl shadow-[10px_10px_0px_rgba(30,41,59,1)] max-w-2xl w-full z-10 transform rotate-1">
               <h2 onClick={function(){
                 const newClicks = titleClicks + 1;
                 if (newClicks >= 3) {
@@ -836,30 +838,30 @@
                 } else {
                   setTitleClicks(newClicks);
                 }
-              }} className="text-2xl font-black mb-6 border-b-4 border-[#ffcc00] inline-block cursor-pointer select-none">🌐 多人連線選單</h2>
+              }} className="text-2xl font-black text-slate-800 mb-6 inline-block border-b-4 border-[#ffcc00] pb-1 cursor-pointer select-none">🌐 多人連線選單</h2>
               
               <div className="mb-6 bg-white p-4 rounded-lg border-2 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)]">
-                <label className="block text-[#2d2a26] font-bold text-sm mb-2">第一步：設定顯示暱稱</label>
-                <input type="text" placeholder="輸入同學認得的名字" value={tempPlayerName} onChange={function(e){setTempPlayerName(e.target.value);}} disabled={isConnecting} className="w-full border-2 border-[#2d2a26] rounded-md p-3 font-bold bg-yellow-50 outline-none focus:ring-2 ring-[#ffcc00] disabled:opacity-50" />
+                <label className="block text-slate-800 font-black text-sm mb-2">第一步：設定顯示暱稱</label>
+                <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={function(e){setTempPlayerName(e.target.value);}} disabled={isConnecting} className="w-full border-2 border-slate-800 rounded-md p-3 font-bold bg-yellow-50 outline-none focus:ring-2 ring-[#ffcc00] disabled:opacity-50" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="border-t-4 md:border-t-0 md:border-r-4 border-dashed border-slate-300 pt-4 md:pt-0 md:pr-6 flex flex-col h-full">
-                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-[#2d2a26]">👑 建立對局大廳</h3>
-                   <p className="text-xs text-slate-500 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供同學加入。</p>
+                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-slate-800">👑 建立對局大廳</h3>
+                   <p className="text-xs text-slate-600 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供同學加入。</p>
                    <div className="mt-auto">
                      {stableMode && <div className="text-xs font-black text-emerald-600 mb-2 animate-pulse">✓ 雲端模式準備就緒</div>}
-                     <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase">
+                     <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase">
                        {isConnecting ? "建立中..." : "發起多人對局"}
                      </button>
                    </div>
                 </div>
 
                 <div className="pt-4 md:pt-0 flex flex-col h-full">
-                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-[#2d2a26]">👤 參與現有對局</h3>
-                   <p className="text-xs text-slate-500 mb-2 font-bold leading-relaxed">請輸入主機分派的 4 碼邀請碼：</p>
-                   <input type="text" maxLength="5" placeholder="邀請碼" value={tempRoomId} onChange={function(e){setTempRoomId(e.target.value.toUpperCase());}} disabled={isConnecting} className="w-full border-4 border-[#2d2a26] rounded-xl p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase shadow-[4px_4px_0px_rgba(30,41,59,1)] disabled:opacity-50" />
-                   <button onClick={joinExistingGame} disabled={isConnecting} className="w-full py-3 bg-emerald-400 text-slate-900 border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all mt-auto disabled:opacity-50 disabled:cursor-not-allowed uppercase">
+                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-slate-800">👤 參與現有對局</h3>
+                   <p className="text-xs text-slate-600 mb-2 font-bold leading-relaxed">請輸入主機分派的 4 碼邀請碼：</p>
+                   <input type="text" maxLength="5" placeholder="邀請碼" value={tempRoomId} onChange={function(e){setTempRoomId(e.target.value.toUpperCase());}} disabled={isConnecting} className="w-full border-4 border-slate-800 rounded-xl p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase shadow-[4px_4px_0px_rgba(30,41,59,1)] disabled:opacity-50" />
+                   <button onClick={joinExistingGame} disabled={isConnecting} className="w-full py-3 bg-emerald-400 text-slate-900 border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all mt-auto disabled:opacity-50 disabled:cursor-not-allowed uppercase">
                      {isConnecting ? "加入中..." : "參與對局連線"}
                    </button>
                 </div>
@@ -967,7 +969,28 @@
                         const islandsMap = {}; islandsToRender.forEach(function(i) { islandsMap[i.id] = i; });
                         const f = islandsMap[sol.from], t = islandsMap[sol.to];
                         if (!f || !t) return null;
-                        return <line key={`sol-${idx}`} x1={f.x*SCALE+PADDING} y1={f.y*SCALE+PADDING} x2={t.x*SCALE+PADDING} y2={t.y*SCALE+PADDING} stroke="#ef4444" strokeWidth={sol.count*4} strokeOpacity="0.3" strokeDasharray="5,5" className="solution-line pointer-events-none" />;
+                        const x1 = f.x*SCALE+PADDING, y1 = f.y*SCALE+PADDING, x2 = t.x*SCALE+PADDING, y2 = t.y*SCALE+PADDING;
+
+                        if (sol.count === 1) {
+                            return <line key={`sol-${idx}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#ef4444" strokeWidth="6" strokeOpacity="0.4" strokeDasharray="8,6" className="solution-line pointer-events-none" />;
+                        } else if (sol.count === 2) {
+                            if (sol.type === 'h') {
+                                return (
+                                    <g key={`sol-${idx}`} className="pointer-events-none">
+                                        <line x1={x1} y1={y1-5} x2={x2} y2={y2-5} stroke="#ef4444" strokeWidth="5" strokeOpacity="0.4" strokeDasharray="8,6" className="solution-line" />
+                                        <line x1={x1} y1={y1+5} x2={x2} y2={y2+5} stroke="#ef4444" strokeWidth="5" strokeOpacity="0.4" strokeDasharray="8,6" className="solution-line" />
+                                    </g>
+                                );
+                            } else {
+                                return (
+                                    <g key={`sol-${idx}`} className="pointer-events-none">
+                                        <line x1={x1-5} y1={y1} x2={x2-5} y2={y2} stroke="#ef4444" strokeWidth="5" strokeOpacity="0.4" strokeDasharray="8,6" className="solution-line" />
+                                        <line x1={x1+5} y1={y1} x2={x2+5} y2={y2} stroke="#ef4444" strokeWidth="5" strokeOpacity="0.4" strokeDasharray="8,6" className="solution-line" />
+                                    </g>
+                                );
+                            }
+                        }
+                        return null;
                     })}
 
                     {bridges.map(function(b){
