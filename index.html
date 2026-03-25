@@ -19,14 +19,14 @@
   <style>
     body {
       overscroll-behavior-y: none;
-      background-color: #f4f1ea; 
-      background-image: radial-gradient(#d1cabc 2px, transparent 2px); 
-      background-size: 16px 16px; 
+      background-color: #fdf5e6; 
+      background-image: radial-gradient(#d3c5ab 2px, transparent 2px); 
+      background-size: 12px 12px; 
       margin: 0; padding: 0;
       font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang TC', 'Heiti TC', 'Microsoft JhengHei', sans-serif;
     }
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-10px); }
+      from { opacity: 0; transform: translateY(-5px); }
       to { opacity: 1; transform: translateY(0); }
     }
     .animate-fadeIn {
@@ -46,25 +46,12 @@
     .animate-slideUpFade {
       animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
-    .custom-scrollbar::-webkit-scrollbar {
-      width: 12px; height: 12px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-      background: #f4f1ea; border-left: 3px solid #2d2a26; border-top: 3px solid #2d2a26;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #d1cabc; border: 3px solid #2d2a26; border-radius: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: #a8a296;
-    }
-    .solution-line {
-      stroke-dasharray: 10 10;
-      animation: dashMove 2s linear infinite;
-    }
-    @keyframes dashMove {
-      to { stroke-dashoffset: -20; }
-    }
+    .custom-scrollbar::-webkit-scrollbar { width: 12px; height: 12px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-left: 2px solid #1e293b; border-top: 2px solid #1e293b; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border: 2px solid #1e293b; border-radius: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .solution-line { stroke-dasharray: 10 10; animation: dashMove 2s linear infinite; }
+    @keyframes dashMove { to { stroke-dashoffset: -20; } }
   </style>
 </head>
 <body>
@@ -78,19 +65,8 @@
     import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     window.firebaseAPI = {
-      initializeApp: initializeApp,
-      getAuth: getAuth, 
-      signInAnonymously: signInAnonymously,
-      onAuthStateChanged: onAuthStateChanged,
-      signInWithCustomToken: signInWithCustomToken,
-      getFirestore: getFirestore, 
-      doc: doc, 
-      setDoc: setDoc, 
-      getDoc: getDoc, 
-      onSnapshot: onSnapshot, 
-      updateDoc: updateDoc, 
-      collection: collection, 
-      deleteDoc: deleteDoc
+      initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken,
+      getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, deleteDoc
     };
   </script>
 
@@ -117,7 +93,7 @@
 
     const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
-    // === 關卡設定 ===
+    // === 關卡設定 (無限隨機題庫) ===
     const LEVELS = [
       { id: 1, name: "🎲 隨機 (5x5 幼幼班)", width: 5, height: 5, description: "最簡單的暖身關卡，試著連連看。" },
       { id: 2, name: "🎲 隨機 (10x10 標準)", width: 10, height: 10, description: "標準難度，注意所有島嶼都要連通喔！" },
@@ -127,7 +103,7 @@
     ];
 
     // ==========================================
-    // 智慧逆向生成演算法 (高密度版)
+    // 智慧逆向生成演算法 (超高密度版)
     // ==========================================
     function generateRandomHashi(levelDef) {
       const width = levelDef.width, height = levelDef.height;
@@ -142,8 +118,10 @@
       
       const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; 
       const area = width * height;
-      let targetIslandCount = Math.floor(area * 0.22);
-      let maxAttempts = area * 20;
+      
+      // 大幅提高島嶼目標密度 (約 35% 佔比)
+      let targetIslandCount = Math.floor(area * 0.35);
+      let maxAttempts = area * 50;
       let attempts = 0;
       
       while (islands.length < targetIslandCount && attempts < maxAttempts) {
@@ -172,13 +150,18 @@
 
         if (hitType === 'island') {
             if (dist < 2) continue; 
-            if (Math.random() < 0.6) { target_d = dist; targetIslandObj = hitObj; } 
+            // 提高連接現有島嶼的機率，增加網狀結構
+            if (Math.random() < 0.8) { target_d = dist; targetIslandObj = hitObj; } 
             else continue;
         } else if (hitType === 'wall') {
             if (dist < 3) continue; 
             let max_possible = dist - 1;
             let pool = [];
-            for (let i = 2; i <= max_possible; i++) { pool.push(i); if (i <= 3) pool.push(i); }
+            // 強烈偏好生成「短橋」，讓島嶼更密集
+            for (let i = 2; i <= max_possible; i++) { 
+              pool.push(i); 
+              if (i <= 3) { pool.push(i); pool.push(i); } 
+            }
             target_d = pool[Math.floor(Math.random() * pool.length)];
         }
 
@@ -189,15 +172,25 @@
 
         if (!targetIslandObj) {
             let tooClose = false;
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    if (dx === 0 && dy === 0) continue;
-                    let checkX = newX + dx, checkY = newY + dy;
-                    if (checkX >= 0 && checkX < width && checkY >= 0 && checkY < height) {
-                        if (grid[checkY][checkX] && grid[checkY][checkX].type === 'island') tooClose = true;
+            // 嚴格檢查上下左右不能相鄰
+            const orthoDirs = [[0,1], [1,0], [0,-1], [-1,0]];
+            for (let od of orthoDirs) {
+                let cx = newX + od[0], cy = newY + od[1];
+                if (cx >= 0 && cx < width && cy >= 0 && cy < height) {
+                    if (grid[cy][cx] && grid[cy][cx].type === 'island') tooClose = true;
+                }
+            }
+            // 放寬斜角檢查：只有小機率排斥斜角相鄰，創造更高密度
+            if (!tooClose) {
+                const diagDirs = [[1,1], [1,-1], [-1,1], [-1,-1]];
+                for (let dd of diagDirs) {
+                    let cx = newX + dd[0], cy = newY + dd[1];
+                    if (cx >= 0 && cx < width && cy >= 0 && cy < height) {
+                        if (grid[cy][cx] && grid[cy][cx].type === 'island' && Math.random() < 0.2) tooClose = true;
                     }
                 }
             }
+
             if (tooClose) continue;
 
             targetIslandObj = { id: islandId++, x: newX, y: newY, req: 0 };
@@ -216,6 +209,7 @@
         }
       }
 
+      // 階段二：交叉連接掃描 (極大化網路的迴路)
       for (let i = 0; i < islands.length; i++) {
           let source = islands[i];
           for (let d = 0; d < dirs.length; d++) {
@@ -236,7 +230,8 @@
                   let existingBridge = topologyBridges.find(function(b) {
                       return (b.from === source.id && b.to === hitObj.id) || (b.to === source.id && b.from === hitObj.id);
                   });
-                  if (!existingBridge && Math.random() < 0.6) {
+                  // 85% 超高機率將「看得到」的島嶼連接起來
+                  if (!existingBridge && Math.random() < 0.85) {
                       topologyBridges.push({ from: source.id, to: hitObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 });
                       for (let j = 1; j < dist; j++) grid[source.y + dir[1] * j][source.x + dir[0] * j] = { type: 'bridge' };
                   }
@@ -476,7 +471,7 @@
         syncState({ bridges: nextBridges });
       };
 
-      // === 工具按鈕動作 (所有人皆可操作) ===
+      // === 工具按鈕動作 ===
       const handleUndo = () => {
         if (history.length === 0 || isWon || engineRef.current !== 'none') return;
         const previousState = history[history.length - 1];
@@ -500,6 +495,7 @@
       };
 
       const handleLevelChange = (newLevelId) => {
+        if (engineRef.current !== 'none' && !isHostRef.current) return;
         const targetLevelDef = LEVELS.find(function(l) { return l.id === newLevelId; });
         if(!targetLevelDef) return;
         const newRandomData = generateRandomHashi(targetLevelDef);
@@ -563,27 +559,32 @@
         const rDoc = doc(db, 'artifacts', safeAppId, 'public', 'data', 'rooms', rId);
         roomRef.current = rDoc;
 
+        const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), ms));
+
         try {
           if (isCreating) {
             setIsHost(true); isHostRef.current = true;
             const safeState = JSON.parse(JSON.stringify(stateRef.current));
-            await setDoc(rDoc, { hostId: myId, players: [{id: myId, name: pName, isHost: true, color: COLORS[0]}], gameState: safeState, updatedAt: Date.now() });
+            await Promise.race([
+                setDoc(rDoc, { hostId: myId, players: [{id: myId, name: pName, isHost: true, color: COLORS[0]}], gameState: safeState, updatedAt: Date.now() }),
+                timeout(6000)
+            ]);
           } else {
-            const snap = await getDoc(rDoc);
-            if (!snap.exists()) { setIsConnecting(false); return showToast("⚠️ 找不到該對局大廳，請確認代碼"); }
+            const snap = await Promise.race([getDoc(rDoc), timeout(6000)]);
+            if (!snap.exists()) { setIsConnecting(false); switchToOffline(); return showToast("⚠️ 找不到該對局大廳，請確認代碼"); }
             setIsHost(false); isHostRef.current = false;
             let pList = snap.data().players || [];
             if (!pList.find(function(p){return p.id === myId;})) {
               pList.push({ id: myId, name: pName, isHost: false, color: COLORS[pList.length % COLORS.length] });
-              await updateDoc(rDoc, { players: pList, updatedAt: Date.now() });
+              await Promise.race([updateDoc(rDoc, { players: pList, updatedAt: Date.now() }), timeout(6000)]);
             }
           }
           setRoomId(rId); setScreen('game'); setIsHeaderCollapsed(false); setIsConnecting(false);
 
           unsubRef.current = onSnapshot(rDoc, function(docSnap) {
             if (!docSnap.exists()) { 
-               if(engineRef.current !== 'none') { showToast("⚠️ 房主已斷線，切換為單機模式"); switchToOffline(); }
-               return; 
+               showToast("⚠️ 房主已斷線，切換為單機模式"); 
+               switchToOffline(); return; 
             }
             const data = docSnap.data();
             setPlayersList(data.players || []);
@@ -597,7 +598,11 @@
               stateRef.current = gs;
             }
           }, function(err) { showToast("⚠️ 網路波動，同步中..."); });
-        } catch(e) { setIsConnecting(false); showToast("⚠️ 雲端連線失敗，請檢查網路"); }
+        } catch(e) { 
+            setIsConnecting(false); switchToOffline();
+            if (e.message === "TIMEOUT") showToast("⚠️ 連線逾時！請確認 Firebase 後台已開放 Firestore 讀寫權限");
+            else showToast("⚠️ 雲端連線失敗，請檢查網路或權限");
+        }
       };
 
       const setupPeerJS = (rId, pName, isCreating) => {
@@ -638,7 +643,7 @@
                 });
               });
             });
-            p.on('error', function(err) { setIsConnecting(false); showToast("⚠️ 無法建立對局大廳，請重試"); });
+            p.on('error', function(err) { setIsConnecting(false); switchToOffline(); showToast("⚠️ 無法建立對局大廳，請重試"); });
         } else {
             const guestP = new Peer();
             peerRef.current = guestP;
@@ -660,11 +665,9 @@
                       if (m.players) setPlayersList(m.players);
                   }
                 });
-                c.on('close', function() { 
-                    if(engineRef.current !== 'none') { showToast("⚠️ 房主已斷線，切換為單機模式"); switchToOffline(); }
-                });
+                c.on('close', function() { showToast("⚠️ 主機已離線，切換為單機模式"); switchToOffline(); });
             });
-            guestP.on('error', function(err) { setIsConnecting(false); showToast("⚠️ 無法連線，請確認代碼是否正確"); });
+            guestP.on('error', function(err) { setIsConnecting(false); switchToOffline(); showToast("⚠️ 無法連線，請確認代碼是否正確"); });
         }
       };
 
@@ -682,10 +685,9 @@
         switchToOffline(); setScreen('home'); setIsWon(false); setElapsedTime(0); setHistory([]);
       };
 
-      // === 點擊玩家換色邏輯 ===
       const handlePlayerColorChange = (playerId) => {
         if (engineRef.current === 'none') return;
-        if (playerId === myId) return; // 自己不能換自己的顏色
+        if (playerId === myId) return; 
 
         if (engineRef.current === 'firebase' && roomRef.current) {
             const updatedPlayers = playersList.map(function(p) { 
@@ -752,18 +754,23 @@
         try { document.execCommand('copy'); showToast("✅ 已產生並複製代碼！"); } catch (err) {}
         document.body.removeChild(textArea);
       };
+      
       const handleQuickPaste = async () => {
         try { if (navigator.clipboard && navigator.clipboard.readText) { const text = await navigator.clipboard.readText(); if(text) { setSaveCode(text); showToast("✅ 貼上成功！"); } } else { throw new Error(); } } 
         catch (err) { const ta = document.getElementById("saveCodeTextarea"); if (ta) ta.focus(); showToast("⚠️ 瀏覽器阻擋自動貼上，請手動貼上"); }
       };
+      
       const handleLoadCode = () => {
         try {
           if (!saveCode.trim()) return showToast("⚠️ 請貼上代碼");
           const data = JSON.parse(decodeURIComponent(atob(saveCode.trim())));
           const baseLevel = LEVELS.find(function(l){return l.id === data.lid;});
           if (!baseLevel) return showToast("⚠️ 無效的代碼");
+          
           const newRandom = data.r;
-          const emptyBridges = generateEmptyBridges(newRandom || baseLevel);
+          const islandsToUse = newRandom && newRandom.islands ? newRandom.islands : baseLevel.islands;
+          
+          const emptyBridges = generateEmptyBridges({ islands: islandsToUse });
           data.b.forEach(function(savedBr){ let tb = emptyBridges.find(function(eb){return eb.id === savedBr.i;}); if (tb) { tb.count = savedBr.c; tb.owner = savedBr.o; } });
           setCurrentLevelId(data.lid);
           syncState({ randomLevelData: newRandom, bridges: emptyBridges, showSolution: false });
@@ -817,7 +824,7 @@
                    <p className="text-xs text-slate-500 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供同學加入。</p>
                    <div className="mt-auto">
                      {stableMode && <div className="text-xs font-bold text-emerald-600 mb-2 animate-pulse">✓ 雲端模式準備就緒</div>}
-                     <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                     <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase">
                        {isConnecting ? "大廳建立中..." : "發起多人對局"}
                      </button>
                    </div>
@@ -827,7 +834,7 @@
                    <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-[#2d2a26]">👤 參與現有對局</h3>
                    <p className="text-xs text-slate-500 mb-2 font-bold leading-relaxed">請輸入主機分派的 4 碼 (或 S 開頭) 邀請碼：</p>
                    <input type="text" maxLength="5" placeholder="輸入邀請碼" value={tempRoomId} onChange={function(e){setTempRoomId(e.target.value.toUpperCase());}} disabled={isConnecting} className="w-full border-[3px] border-[#2d2a26] rounded-lg p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase shadow-[3px_3px_0px_#2d2a26] disabled:opacity-50" />
-                   <button onClick={joinExistingGame} disabled={isConnecting} className="w-full py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mt-auto disabled:opacity-50 disabled:cursor-not-allowed">
+                   <button onClick={joinExistingGame} disabled={isConnecting} className="w-full py-3 bg-emerald-400 text-[#2d2a26] border-[3px] border-[#2d2a26] rounded-xl font-black shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#2d2a26] transition-all mt-auto disabled:opacity-50 disabled:cursor-not-allowed uppercase">
                      {isConnecting ? "連線加入中..." : "參與對局連線"}
                    </button>
                 </div>
@@ -862,11 +869,13 @@
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap ml-auto justify-end">
-                   <div className={`flex items-center gap-1 md:gap-2 overflow-hidden transition-all duration-500 ease-in-out ${isHeaderCollapsed ? 'max-w-[400px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none'}`}>
+                   <div className={`flex items-center gap-1 md:gap-2 overflow-hidden transition-all duration-500 ease-in-out ${isHeaderCollapsed ? 'max-w-[500px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none'}`}>
                      <div className="flex items-center gap-1 md:gap-2 w-max">
                        <select value={currentLevelId} onChange={function(e){handleLevelChange(Number(e.target.value));}} className={`px-2 py-1 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-sm outline-none shadow-[2px_2px_0px_#2d2a26] max-w-[120px] sm:max-w-none cursor-pointer`}>
                          {LEVELS.map(function(level){return <option key={level.id} value={level.id}>{level.name}</option>;})}
                        </select>
+                       {!isWon && hasSolution && !showSolution && ( <button onClick={handleShowSolution} className="px-2 py-1 bg-yellow-400 text-[#2d2a26] border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]" title="解答">💡</button> )}
+                       <button onClick={handleRegenerateRandom} className="px-2 py-1 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]" title="新題">🎲</button>
                        {engineRef.current === 'none' && <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-2 py-1 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26] disabled:opacity-50">↩️</button>}
                        <button onClick={handleReset} className="px-2 py-1 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-sm shadow-[2px_2px_0px_#2d2a26]">🔄</button>
                      </div>
@@ -909,7 +918,7 @@
                          <button onClick={handleReset} className="px-2 md:px-4 py-1.5 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">🔄 <span className="hidden md:inline">重置</span></button>
                          <div className="w-[2px] h-6 bg-[#2d2a26] opacity-30 mx-1 hidden md:block"></div>
                          <button onClick={handleGoHome} className="bg-white hover:bg-slate-100 text-[#2d2a26] border-2 border-[#2d2a26] px-2 md:px-4 py-1.5 rounded-md font-bold text-xs md:text-base shadow-[3px_3px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1">
-                           {engineRef.current === 'none' ? '🏠 回首頁' : (isHostRef.current ? '🔌 斷線並回到首頁' : '🔌 退出連線')}
+                           {engineRef.current === 'none' ? '🏠 回首頁' : (isHostRef.current ? '🔌 解散房間' : '🔌 退出連線')}
                          </button>
                       </div>
                     </div>
@@ -1007,8 +1016,8 @@
           </div>
 
           {isWon && !hideVictoryModal && (
-            <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60]">
-              <div className="pointer-events-auto bg-white rounded-2xl p-5 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUp relative">
+            <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-[60] bg-slate-900/20 backdrop-blur-[2px]">
+              <div className="pointer-events-auto bg-white rounded-2xl p-6 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUp relative">
                 <button onClick={function(){setHideVictoryModal(true);}} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
                 <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
                 <h2 className="text-2xl md:text-3xl font-black text-[#2d2a26] mb-2 uppercase tracking-wide">PERFECT!</h2>
@@ -1022,12 +1031,14 @@
           )}
 
           {isWon && hideVictoryModal && (
-            <button onClick={function(){setHideVictoryModal(false);}} className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] z-50 hover:translate-y-[2px] transition-all font-black flex items-center gap-2 tracking-wide text-lg">🏆 顯示成績</button>
+            <div className="fixed bottom-6 inset-x-0 flex justify-center z-50 pointer-events-none">
+              <button onClick={function(){setHideVictoryModal(false);}} className="pointer-events-auto bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] hover:translate-y-[2px] transition-all font-black flex items-center gap-2 tracking-wide text-lg">🏆 顯示成績</button>
+            </div>
           )}
 
           {showSaveModal && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_#2d2a26] w-full max-w-md animate-fadeIn rotate-1">
+              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_#2d2a26] w-full max-w-md animate-popUp">
                 <h2 className="text-2xl font-black text-[#2d2a26] mb-2 border-b-[4px] border-blue-500 inline-block pb-1">💾 存檔與讀檔</h2>
                 <p className="text-sm font-bold text-slate-600 mb-4">將進度轉換為代碼，下次貼上代碼即可恢復！</p>
                 <div className="mb-6">
