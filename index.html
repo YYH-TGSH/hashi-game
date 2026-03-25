@@ -77,6 +77,7 @@
     import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+    // 將模組 API 曝露至全域變數，確保底下 Babel 腳本可以成功解構存取
     window.firebaseAPI = {
       initializeApp: initializeApp,
       getAuth: getAuth, 
@@ -96,6 +97,7 @@
 
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
+    // 精確解構所有需要的 Firebase API，包含 signInWithCustomToken
     const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, deleteDoc } = window.firebaseAPI;
 
     // === Firebase 配置 ===
@@ -272,6 +274,7 @@
         let a = isl[i]; let rN = null, bN = null;
         for (let j = 0; j < isl.length; j++) {
           let b = isl[j];
+          // 這裡精確找出同一列右邊最近的島嶼，以及同一行下方最近的島嶼，保證產出的橋樑都是水平垂直的。
           if (b.y === a.y && b.x > a.x) if (!rN || b.x < rN.x) rN = b;
           if (b.x === a.x && b.y > a.y) if (!bN || b.y < bN.y) bN = b;
         }
@@ -292,17 +295,22 @@
     // ==========================================
 
     function HashiGame() {
-      // === 唯一身分識別 (解決同瀏覽器多開分頁的 UID 衝突問題) ===
+      // === 唯一身分識別 ===
       const playerIdRef = useRef(Math.random().toString(36).substring(2, 12));
       const myId = playerIdRef.current;
+
+      // === 解決斜線Bug：使用單一的隨機產出資料來初始化地圖與橋樑，保證端點對齊 ===
+      const [initialLevelData] = useState(() => generateRandomHashi(LEVELS[1]));
 
       // === 基本狀態 ===
       const [user, setUser] = useState(null);
       const [screen, setScreen] = useState('home');
       const [engine, setEngine] = useState('none');
-      const [currentLevelId, setCurrentLevelId] = useState(2); // 預設使用 10x10 標準
-      const [randomLevelData, setRandomLevelData] = useState(() => generateRandomHashi(LEVELS[1]));
-      const [bridges, setBridges] = useState(() => generateEmptyBridges(generateRandomHashi(LEVELS[1])));
+      const [currentLevelId, setCurrentLevelId] = useState(2); 
+      
+      const [randomLevelData, setRandomLevelData] = useState(initialLevelData);
+      const [bridges, setBridges] = useState(() => generateEmptyBridges(initialLevelData));
+      
       const [history, setHistory] = useState([]);
       const [isWon, setIsWon] = useState(false);
       const [hideVictoryModal, setHideVictoryModal] = useState(false);
@@ -353,7 +361,7 @@
         onAuthStateChanged(auth, function(u) { if(u) setUser(u); });
       }, []);
 
-      // 監聽並寫入狀態 Ref，包含 levelId
+      // 監聽並寫入狀態 Ref
       useEffect(function() {
         stateRef.current = { bridges: bridges, randomLevelData: randomLevelData, showSolution: showSolution, startTime: startTime, levelId: currentLevelId };
       }, [bridges, randomLevelData, showSolution, startTime, currentLevelId]);
@@ -497,7 +505,6 @@
         const targetLevelDef = LEVELS.find(function(l) { return l.id === currentLevelId; }) || LEVELS[1];
         const newRandomData = generateRandomHashi(targetLevelDef);
         const empty = generateEmptyBridges(newRandomData);
-        // 同步時帶上 levelId 確保大家狀態一致
         syncState({ levelId: currentLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
         setIsWon(false); setHistory([]); setElapsedTime(0); setHideVictoryModal(false);
       };
@@ -508,14 +515,13 @@
         if(!targetLevelDef) return;
         const newRandomData = generateRandomHashi(targetLevelDef);
         const empty = generateEmptyBridges(newRandomData);
-        // 房主換題，將新的 levelId 推播給所有人
         syncState({ levelId: newLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
         setIsWon(false); setHistory([]); setZoomLevel(1); setElapsedTime(0);
       };
 
       const handleShowSolution = () => { syncState({ showSolution: true }); };
 
-      // === 切換單機模式 (不中斷遊戲) ===
+      // === 切換單機模式 ===
       const switchToOffline = () => {
         if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
         if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
@@ -596,7 +602,7 @@
               const gs = data.gameState;
               if (gs.bridges) setBridges(gs.bridges);
               if (gs.randomLevelData) setRandomLevelData(gs.randomLevelData);
-              if (gs.levelId !== undefined) setCurrentLevelId(gs.levelId); // 同步下拉選單的 ID
+              if (gs.levelId !== undefined) setCurrentLevelId(gs.levelId);
               if (gs.showSolution !== undefined) setShowSolution(gs.showSolution);
               if (gs.startTime) setStartTime(gs.startTime);
               stateRef.current = gs;
@@ -619,7 +625,7 @@
                 c.on('data', function(m) {
                   if (m.type === 'JOIN') {
                       setPlayersList(function(prev){
-                          if(prev.find(function(p){return p.id===m.uid;})) return prev;
+                          if(prev.find(function(pl){return pl.id===m.uid;})) return prev;
                           const nList = [...prev, { id: m.uid, name: m.pName, isHost: false, color: COLORS[prev.length % COLORS.length] }];
                           connsRef.current.forEach(function(conn) { conn.send({ type: 'INIT', data: stateRef.current, players: nList }); });
                           return nList;
@@ -629,9 +635,9 @@
                       connsRef.current.forEach(function(conn) { if(conn.peer !== c.peer) conn.send({ type: 'SYNC', data: m.data }); });
                   } else if (m.type === 'REQ_COLOR_CHANGE') {
                       setPlayersList(function(prev){
-                          const nList = prev.map(function(p){
-                              if (p.id === m.targetId) return { ...p, color: COLORS[(COLORS.indexOf(p.color) + 1) % COLORS.length] };
-                              return p;
+                          const nList = prev.map(function(pl){
+                              if (pl.id === m.targetId) return { ...pl, color: COLORS[(COLORS.indexOf(pl.color) + 1) % COLORS.length] };
+                              return pl;
                           });
                           connsRef.current.forEach(function(conn) { conn.send({ type: 'PLAYERS_UPDATE', players: nList }); });
                           return nList;
@@ -676,7 +682,7 @@
             if (unsubRef.current) unsubRef.current();
             if (isHostRef.current && engineRef.current === 'firebase' && roomRef.current) {
                deleteDoc(roomRef.current).catch(function(e){});
-            } else if (!isHostRef.current && engineRef.current === 'firebase' && roomRef.current) {
+            } else if (!isHostRef.current && engineRef.current === 'firebase' && roomRef.current && user) {
                const updatedPlayers = playersList.filter(function(p){ return p.id !== myId; });
                updateDoc(roomRef.current, { players: updatedPlayers }).catch(function(e){});
             }
