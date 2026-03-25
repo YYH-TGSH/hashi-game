@@ -262,8 +262,8 @@
           if (b.y === a.y && b.x > a.x) if (!rN || b.x < rN.x) rN = b;
           if (b.x === a.x && b.y > a.y) if (!bN || b.y < bN.y) bN = b;
         }
-        if (rN) pb.push({ id: bridgeId++, from: a.id, to: rN.id, type: 'h', count: 0 });
-        if (bN) pb.push({ id: bridgeId++, from: a.id, to: bN.id, type: 'v', count: 0 });
+        if (rN) pb.push({ id: bridgeId++, from: a.id, to: rN.id, type: 'h', count: 0, draftCount: 0 });
+        if (bN) pb.push({ id: bridgeId++, from: a.id, to: bN.id, type: 'v', count: 0, draftCount: 0 });
       }
       return pb;
     }
@@ -310,6 +310,9 @@
       const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
       const [showSaveModal, setShowSaveModal] = useState(false);
       const [saveCode, setSaveCode] = useState("");
+      
+      // 草稿模式狀態
+      const [isDraftMode, setIsDraftMode] = useState(false);
 
       // === 多人連線狀態 ===
       const [roomId, setRoomId] = useState("");
@@ -430,14 +433,14 @@
         }
       };
 
-      // 橋樑點擊與防呆
+      // 橋樑點擊與防呆 (支援草稿模式)
       const handleBridgeClick = (bId) => {
         if (isWon) return;
         const cur = bridges || [];
         const target = cur.find(function(b) { return b.id === bId; });
         if (!target) return;
         
-        if (target.count === 0) {
+        if (target.count + (target.draftCount || 0) === 0) {
           const islandsMap = {};
           const cLevel = randomLevelData || { islands: [] };
           (cLevel.islands || []).forEach(function(i){ islandsMap[i.id] = i; });
@@ -448,7 +451,7 @@
               const y = tFrom.y, minX = Math.min(tFrom.x, tTo.x), maxX = Math.max(tFrom.x, tTo.x);
               for (let i=0; i<cur.length; i++) {
                 let b = cur[i];
-                if (b.count > 0 && b.type === 'v') {
+                if ((b.count + (b.draftCount || 0)) > 0 && b.type === 'v') {
                   const bFrom = islandsMap[b.from], bTo = islandsMap[b.to];
                   if (bFrom && bTo && bFrom.x > minX && bFrom.x < maxX && y > Math.min(bFrom.y, bTo.y) && y < Math.max(bFrom.y, bTo.y)) isCross = true;
                 }
@@ -457,7 +460,7 @@
               const x = tFrom.x, minY = Math.min(tFrom.y, tTo.y), maxY = Math.max(tFrom.y, tTo.y);
               for (let i=0; i<cur.length; i++) {
                 let b = cur[i];
-                if (b.count > 0 && b.type === 'h') {
+                if ((b.count + (b.draftCount || 0)) > 0 && b.type === 'h') {
                   const bFrom = islandsMap[b.from], bTo = islandsMap[b.to];
                   if (bFrom && bTo && bFrom.y > minY && bFrom.y < maxY && x > Math.min(bFrom.x, bTo.x) && x < Math.max(bFrom.x, bTo.x)) isCross = true;
                 }
@@ -468,10 +471,31 @@
         }
 
         if (engineRef.current === 'none') setHistory(function(past) { return [...past, cur]; });
-        const nextCount = (target.count + 1) % 3;
-        const newOwner = nextCount > 0 ? myId : null;
+        
         const nextBridges = cur.map(function(b) { 
-            return b.id === bId ? { ...b, count: nextCount, owner: newOwner } : b; 
+            if (b.id !== bId) return b;
+            
+            let newCount = b.count;
+            let newDraftCount = b.draftCount || 0;
+            
+            if (isDraftMode) {
+               if (b.count === 1) {
+                  newDraftCount = newDraftCount === 0 ? 1 : 0;
+               } else if (b.count === 0) {
+                  newDraftCount = (newDraftCount + 1) % 3;
+               }
+               // 如果 b.count === 2，無反應
+            } else {
+               if (newDraftCount > 0) {
+                  newCount = b.count + newDraftCount;
+                  newDraftCount = 0;
+               } else {
+                  newCount = (b.count + 1) % 3;
+               }
+            }
+
+            const newOwner = (newCount > 0 || newDraftCount > 0) ? myId : null;
+            return { ...b, count: newCount, draftCount: newDraftCount, owner: newOwner }; 
         });
         syncState({ bridges: nextBridges });
       };
@@ -719,14 +743,20 @@
         }
       };
 
-      // === 過關判定 ===
+      // === 過關判定與島嶼計算 ===
       const islandCurrentCounts = useMemo(function() {
         const counts = {};
         const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
-        islands.forEach(function(i) { counts[i.id] = 0; });
+        islands.forEach(function(i) { counts[i.id] = { total: 0, real: 0 }; });
         (bridges || []).forEach(function(b) {
-          if (counts[b.from] !== undefined) counts[b.from] += b.count;
-          if (counts[b.to] !== undefined) counts[b.to] += b.count;
+          if (counts[b.from] !== undefined) {
+             counts[b.from].total += b.count + (b.draftCount || 0);
+             counts[b.from].real += b.count;
+          }
+          if (counts[b.to] !== undefined) {
+             counts[b.to].total += b.count + (b.draftCount || 0);
+             counts[b.to].real += b.count;
+          }
         });
         return counts;
       }, [bridges, randomLevelData]);
@@ -734,12 +764,21 @@
       useEffect(function() {
         const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
         if (islands.length === 0) { if (isWon) setIsWon(false); return; }
+        
         let allCountsMatch = true;
-        for (let i=0; i<islands.length; i++) { if (islandCurrentCounts[islands[i].id] !== islands[i].req) { allCountsMatch = false; break; } }
+        for (let i=0; i<islands.length; i++) { 
+           // 只有「實線」才算成功過關
+           if (islandCurrentCounts[islands[i].id].real !== islands[i].req) { allCountsMatch = false; break; } 
+        }
         if (!allCountsMatch) { if (isWon) setIsWon(false); return; }
         
         const adjList = {}; islands.forEach(function(i) { adjList[i.id] = []; });
-        (bridges || []).forEach(function(b) { if (b.count > 0 && adjList[b.from] && adjList[b.to]) { adjList[b.from].push(b.to); adjList[b.to].push(b.from); } });
+        (bridges || []).forEach(function(b) { 
+           // 只有「實線」才能讓圖形連通
+           if (b.count > 0 && adjList[b.from] && adjList[b.to]) { 
+               adjList[b.from].push(b.to); adjList[b.to].push(b.from); 
+           } 
+        });
         const visited = new Set(); const queue = [islands[0].id];
         if (queue.length > 0) visited.add(queue[0]);
         while (queue.length > 0) {
@@ -754,7 +793,7 @@
 
       // 存讀檔
       const handleSaveCode = () => {
-        const saveData = { lid: currentLevelId, r: randomLevelData, b: (bridges || []).filter(function(br){return br.count > 0;}).map(function(br){return { i: br.id, c: br.count, o: br.owner };}) };
+        const saveData = { lid: currentLevelId, r: randomLevelData, b: (bridges || []).filter(function(br){return br.count > 0 || (br.draftCount || 0) > 0;}).map(function(br){return { i: br.id, c: br.count, d: br.draftCount || 0, o: br.owner };}) };
         const code = btoa(encodeURIComponent(JSON.stringify(saveData)));
         setSaveCode(code);
         const textArea = document.createElement("textarea"); textArea.value = code; document.body.appendChild(textArea); textArea.select();
@@ -778,7 +817,7 @@
           const islandsToUse = newRandom && newRandom.islands ? newRandom.islands : baseLevel.islands;
           
           const emptyBridges = generateEmptyBridges({ islands: islandsToUse });
-          data.b.forEach(function(savedBr){ let tb = emptyBridges.find(function(eb){return eb.id === savedBr.i;}); if (tb) { tb.count = savedBr.c; tb.owner = savedBr.o; } });
+          data.b.forEach(function(savedBr){ let tb = emptyBridges.find(function(eb){return eb.id === savedBr.i;}); if (tb) { tb.count = savedBr.c || 0; tb.draftCount = savedBr.d || 0; tb.owner = savedBr.o; } });
           setCurrentLevelId(data.lid);
           syncState({ randomLevelData: newRandom, bridges: emptyBridges, showSolution: false });
           setIsWon(false); setShowSaveModal(false); showToast("✅ 讀取成功！");
@@ -950,6 +989,7 @@
             <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
               
               <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto">
+                <button onClick={function(){setIsDraftMode(!isDraftMode);}} title={isDraftMode ? "切換為實線模式" : "切換為草稿模式"} className={`w-10 h-10 md:w-12 md:h-12 border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center ${isDraftMode ? 'bg-[#ffcc00] text-slate-800' : 'bg-white text-slate-400 hover:text-slate-800 hover:bg-slate-100'}`}>✏️</button>
                 <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">＋</button>
                 <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">－</button>
                 <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 border-2 border-slate-800 rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
@@ -994,6 +1034,7 @@
                     })}
 
                     {bridges.map(function(b){
+                      const totalLines = b.count + (b.draftCount || 0);
                       const islMap = {}; islandsToRender.forEach(function(i){islMap[i.id]=i;});
                       const f=islMap[b.from], t=islMap[b.to];
                       if (!f || !t) return null;
@@ -1002,10 +1043,36 @@
                       let lineStroke = "#1e293b"; 
                       let lineOpacity = 1;
                       
-                      if (isMultiplayer && b.count > 0 && b.owner && b.owner !== myId) {
+                      if (isMultiplayer && totalLines > 0 && b.owner && b.owner !== myId) {
                           const ownerObj = playersList.find(function(p){return p.id === b.owner;});
                           lineStroke = ownerObj ? ownerObj.color : "#94a3b8"; 
                           lineOpacity = 0.5; 
+                      }
+
+                      if (totalLines === 0) return (
+                        <g key={b.id} onClick={function(){ handleBridgeClick(b.id); }} className="cursor-pointer group">
+                           {b.type === 'h' ? (
+                              <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                            ) : (
+                              <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                            )}
+                        </g>
+                      );
+
+                      let linesToDraw = [];
+                      if (totalLines === 1) {
+                          linesToDraw.push({ isDraft: b.draftCount === 1, offset: 0 });
+                      } else if (totalLines === 2) {
+                          if (b.count === 2) {
+                              linesToDraw.push({ isDraft: false, offset: -5 });
+                              linesToDraw.push({ isDraft: false, offset: 5 });
+                          } else if ((b.draftCount || 0) === 2) {
+                              linesToDraw.push({ isDraft: true, offset: -5 });
+                              linesToDraw.push({ isDraft: true, offset: 5 });
+                          } else {
+                              linesToDraw.push({ isDraft: false, offset: -5 });
+                              linesToDraw.push({ isDraft: true, offset: 5 });
+                          }
                       }
 
                       return (
@@ -1015,15 +1082,24 @@
                           ) : (
                             <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
                           )}
-                          {b.count === 1 && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={lineStroke} strokeWidth="6" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" />}
-                          {b.count === 2 && b.type === 'h' && ( <g><line x1={x1} y1={y1-5} x2={x2} y2={y2-5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /><line x1={x1} y1={y1+5} x2={x2} y2={y2+5} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /></g> )}
-                          {b.count === 2 && b.type === 'v' && ( <g><line x1={x1-5} y1={y1} x2={x2-5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /><line x1={x1+5} y1={y1} x2={x2+5} y2={y2} stroke={lineStroke} strokeWidth="5" strokeLinecap="round" strokeOpacity={lineOpacity} className="transition-all duration-300" /></g> )}
+                          {linesToDraw.map(function(lineObj, lIdx) {
+                              const isDraft = lineObj.isDraft;
+                              const off = lineObj.offset;
+                              const w = totalLines === 1 ? (isDraft ? "5" : "6") : (isDraft ? "4" : "5");
+                              const op = isDraft ? 0.4 : lineOpacity;
+                              const dash = isDraft ? "8,6" : "none";
+                              if (b.type === 'h') {
+                                 return <line key={lIdx} x1={x1} y1={y1+off} x2={x2} y2={y2+off} stroke={lineStroke} strokeWidth={w} strokeLinecap="round" strokeOpacity={op} strokeDasharray={dash} className="transition-all duration-300 pointer-events-none" />;
+                              } else {
+                                 return <line key={lIdx} x1={x1+off} y1={y1} x2={x2+off} y2={y2} stroke={lineStroke} strokeWidth={w} strokeLinecap="round" strokeOpacity={op} strokeDasharray={dash} className="transition-all duration-300 pointer-events-none" />;
+                              }
+                          })}
                         </g>
                       );
                     })}
 
                     {islandsToRender.map(function(island){
-                      const cx = island.x * SCALE + PADDING; const cy = island.y * SCALE + PADDING; const current = islandCurrentCounts[island.id];
+                      const cx = island.x * SCALE + PADDING; const cy = island.y * SCALE + PADDING; const current = islandCurrentCounts[island.id].total;
                       let strokeColor = "#1e293b"; let bgColor = "#ffffff"; let textColor = "#1e293b";
                       if (current === island.req) { strokeColor = "#059669"; bgColor = "#d1fae5"; textColor = "#065f46"; } 
                       else if (current > island.req) { strokeColor = "#dc2626"; bgColor = "#fee2e2"; textColor = "#991b1b"; }
