@@ -116,7 +116,13 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+    // === 上海地鐵 20 色票 ===
+    const COLORS = [
+      '#E3002B', '#F35B00', '#FFC90E', '#D7157A', '#E895C0', // 紅、橘、黃、洋紅、粉紅
+      '#007A61', '#87D300', '#C4D600', '#8DD1BF', '#616130', // 深綠、草綠、萊姆、薄荷綠、橄欖
+      '#00538A', '#008CC1', '#00C1D5', '#79C8ED', '#CDBB79', // 海軍藍、藍、青、淺藍、沙黃
+      '#41136A', '#935CB9', '#BCA8D1', '#7A0026', '#BC7B70'  // 深紫、紫、丁香紫、酒紅、蜜桃
+    ];
 
     // === 關卡設定 ===
     const LEVELS = [
@@ -133,7 +139,7 @@
     function generateRandomHashi(levelDef) {
       const width = levelDef.width, height = levelDef.height;
       let islands = [], topologyBridges = [];
-      let grid = Array(height).fill(null).map(function() { return Array(width).fill(null); });
+      let grid = Array(height).fill(null).map(() => Array(width).fill(null));
       let islandId = 1;
       
       let startX = Math.floor(width / 2), startY = Math.floor(height / 2);
@@ -217,9 +223,7 @@
             grid[newY][newX] = { type: 'island', island: targetIslandObj };
         }
 
-        let existingBridge = topologyBridges.find(function(b) {
-          return (b.from === source.id && b.to === targetIslandObj.id) || (b.to === source.id && b.from === targetIslandObj.id);
-        });
+        let existingBridge = topologyBridges.find(b => (b.from === source.id && b.to === targetIslandObj.id) || (b.to === source.id && b.from === targetIslandObj.id));
 
         if (!existingBridge) {
             let newBridge = { from: source.id, to: targetIslandObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 };
@@ -245,9 +249,7 @@
                   dist++;
               }
               if (hitObj && dist >= 2) {
-                  let existingBridge = topologyBridges.find(function(b) {
-                      return (b.from === source.id && b.to === hitObj.id) || (b.to === source.id && b.from === hitObj.id);
-                  });
+                  let existingBridge = topologyBridges.find(b => (b.from === source.id && b.to === hitObj.id) || (b.to === source.id && b.from === hitObj.id));
                   if (!existingBridge && Math.random() < 0.85) {
                       topologyBridges.push({ from: source.id, to: hitObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 });
                       for (let j = 1; j < dist; j++) grid[source.y + dir[1] * j][source.x + dir[0] * j] = { type: 'bridge' };
@@ -257,19 +259,19 @@
       }
 
       let solutionBridges = [];
-      topologyBridges.forEach(function(b) {
+      topologyBridges.forEach(b => {
           b.count = Math.random() < 0.5 ? 1 : 2; 
           solutionBridges.push(b);
       });
 
-      solutionBridges.forEach(function(b) {
-        let fromNode = islands.find(function(i) { return i.id === b.from; });
-        let toNode = islands.find(function(i) { return i.id === b.to; });
+      solutionBridges.forEach(b => {
+        let fromNode = islands.find(i => i.id === b.from);
+        let toNode = islands.find(i => i.id === b.to);
         if (fromNode) fromNode.req += b.count;
         if (toNode) toNode.req += b.count;
       });
 
-      islands = islands.filter(function(i) { return i.req > 0; });
+      islands = islands.filter(i => i.req > 0);
 
       return { 
         id: levelDef.id, name: levelDef.name, width: width, height: height, 
@@ -313,6 +315,7 @@
         initialDataRef.current = generateRandomHashi(LEVELS[1]);
       }
 
+      // === 基本狀態 ===
       const [user, setUser] = useState(null);
       const [authError, setAuthError] = useState(""); 
       const [screen, setScreen] = useState('home');
@@ -339,6 +342,9 @@
       const [zoomModeIdx, setZoomModeIdx] = useState(0); 
       const [isClosingModal, setIsClosingModal] = useState(false);
 
+      // 色票選擇器狀態：紀錄目前正在修改哪個玩家的顏色
+      const [colorPickerTarget, setColorPickerTarget] = useState(null);
+
       // === 多人連線與游標狀態 ===
       const [roomId, setRoomId] = useState("");
       const [isHost, setIsHost] = useState(false);
@@ -357,7 +363,7 @@
       const svgRef = useRef(null);
       const lastCursorSend = useRef(0);
 
-      // === Refs 突破閉包 ===
+      // === Refs ===
       const engineRef = useRef('none');
       const isHostRef = useRef(false);
       const peerRef = useRef(null);
@@ -368,6 +374,19 @@
       const zoomContainerRef = useRef(null);
       const lastPinchDist = useRef(null);
       const stateRef = useRef({ bridges: [], levelId: 2, randomLevelData: null, showSolution: false, startTime: Date.now() });
+
+      // === 網格與畫布尺寸計算提前至此 ===
+      const cLevel = randomLevelData || { islands: [], description: "" };
+      const islandsToRender = cLevel.islands || [];
+      const maxGridX = Math.max.apply(Math, islandsToRender.map(i => i.x).concat([6])); 
+      const maxGridY = Math.max.apply(Math, islandsToRender.map(i => i.y).concat([6]));
+      const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
+      const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
+      
+      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
+      const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
+      const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
+      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
       useEffect(function() {
         const initAuth = async function() {
@@ -387,30 +406,30 @@
       }, []);
 
       useEffect(function() {
-        stateRef.current = { bridges: bridges, randomLevelData: randomLevelData, showSolution: showSolution, startTime: startTime, levelId: currentLevelId };
+        stateRef.current = { bridges, randomLevelData, showSolution, startTime, levelId: currentLevelId };
       }, [bridges, randomLevelData, showSolution, startTime, currentLevelId]);
 
       useEffect(function() {
         if (isWon || screen !== 'game') return;
-        const t = setInterval(function() { setElapsedTime(Math.floor((Date.now() - startTime) / 1000)); }, 1000);
-        return function() { clearInterval(t); };
+        const t = setInterval(() => setElapsedTime(Math.floor((Date.now() - startTime) / 1000)), 1000);
+        return () => clearInterval(t);
       }, [startTime, isWon, screen]);
 
-      // 畫布縮放與面板自動收合
+      // === 畫布縮放與面板自動收合 ===
       useEffect(function() {
         if (screen !== 'game') return;
         const el = zoomContainerRef.current;
         if (!el) return;
         let touchStartY = null;
 
-        const handleTouchStart = function(e) { if (e.touches.length === 1) { touchStartY = e.touches[0].clientY; } };
-        const handleTouchMove = function(e) {
+        const handleTouchStart = (e) => { if (e.touches.length === 1) { touchStartY = e.touches[0].clientY; } };
+        const handleTouchMove = (e) => {
           if (e.touches.length === 2) {
             e.preventDefault(); 
             const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
             if (lastPinchDist.current) {
               const delta = dist - lastPinchDist.current;
-              setZoomLevel(function(prev) { return Math.min(Math.max(prev + delta * 0.005, 0.4), 3.5); });
+              setZoomLevel(prev => Math.min(Math.max(prev + delta * 0.005, 0.4), 3.5));
               setZoomModeIdx(0); // 取消自動縮放狀態
             }
             lastPinchDist.current = dist;
@@ -419,8 +438,8 @@
             if (Math.abs(dy) > 30 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); }
           }
         };
-        const handleTouchEnd = function() { lastPinchDist.current = null; touchStartY = null; };
-        const handleWheel = function(e) { 
+        const handleTouchEnd = () => { lastPinchDist.current = null; touchStartY = null; };
+        const handleWheel = (e) => { 
             if (Math.abs(e.deltaY) > 10 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); } 
             if (e.ctrlKey) setZoomModeIdx(0); // 如果使用者用滾輪縮放，解除適應狀態
         };
@@ -431,7 +450,7 @@
         el.addEventListener('touchcancel', handleTouchEnd);
         el.addEventListener('wheel', handleWheel, { passive: true });
 
-        return function() {
+        return () => {
           el.removeEventListener('touchstart', handleTouchStart);
           el.removeEventListener('touchmove', handleTouchMove);
           el.removeEventListener('touchend', handleTouchEnd);
@@ -443,14 +462,14 @@
       // 定期清理過期的水波紋動畫
       useEffect(function() {
         if (ripples.length === 0) return;
-        const timer = setTimeout(function() {
+        const timer = setTimeout(() => {
             const now = Date.now();
-            setRipples(function(prev) { return prev.filter(function(r) { return now - r.timestamp < 1000; }); });
+            setRipples(prev => prev.filter(r => now - r.timestamp < 1000));
         }, 1000);
-        return function() { clearTimeout(timer); };
+        return () => clearTimeout(timer);
       }, [ripples]);
 
-      const showToast = (m) => { setToastMsg(m); setTimeout(function() { setToastMsg(""); }, 4000); };
+      const showToast = (m) => { setToastMsg(m); setTimeout(() => setToastMsg(""), 4000); };
 
       // === 游標與水波事件廣播 ===
       const getSvgCoords = (clientX, clientY) => {
@@ -466,13 +485,13 @@
 
       const handlePointerMove = (e) => {
         if (engineRef.current !== 'peerjs' || !showOtherCursors) return;
-        if (Date.now() - lastCursorSend.current < 50) return; // 限制廣播頻率 (約20fps)
+        if (Date.now() - lastCursorSend.current < 50) return; 
         lastCursorSend.current = Date.now();
         const pt = getSvgCoords(e.clientX, e.clientY);
         if (pt) {
             const msg = { type: 'CURSOR', uid: myId, x: pt.x, y: pt.y };
             if (isHostRef.current) {
-                connsRef.current.forEach(function(c) { c.send(msg); });
+                connsRef.current.forEach(c => c.send(msg));
             } else if (connRef.current) {
                 connRef.current.send(msg);
             }
@@ -485,13 +504,11 @@
         if (pt) {
             const msg = { type: 'CLICK', uid: myId, x: pt.x, y: pt.y };
             
-            // 立即新增本地端的水波紋 (確保自己也能看見)
-            setRipples(function(prev) { 
-                return [...prev, { id: Date.now() + Math.random(), uid: myId, x: pt.x, y: pt.y, timestamp: Date.now() }]; 
-            });
+            // 立即新增本地端的水波紋
+            setRipples(prev => [...prev, { id: Date.now() + Math.random(), uid: myId, x: pt.x, y: pt.y, timestamp: Date.now() }]);
             
             if (isHostRef.current) {
-                connsRef.current.forEach(function(c) { c.send(msg); });
+                connsRef.current.forEach(c => c.send(msg));
             } else if (connRef.current) {
                 connRef.current.send(msg);
             }
@@ -511,10 +528,10 @@
         if (shouldBroadcast) {
             if (engineRef.current === 'firebase' && roomRef.current) {
               const safeState = JSON.parse(JSON.stringify(updatedState));
-              updateDoc(roomRef.current, { "gameState": safeState, updatedAt: Date.now() }).catch(function(e){});
+              updateDoc(roomRef.current, { "gameState": safeState, updatedAt: Date.now() }).catch(e => {});
             } else if (engineRef.current === 'peerjs') {
               if (isHostRef.current) {
-                 connsRef.current.forEach(function(c) { c.send({ type: 'SYNC', data: updatedState }); });
+                 connsRef.current.forEach(c => c.send({ type: 'SYNC', data: updatedState }));
               } else if (connRef.current) {
                  connRef.current.send({ type: 'SYNC', data: updatedState });
               }
@@ -526,13 +543,13 @@
       const handleBridgeClick = (bId) => {
         if (isWon) return;
         const cur = bridges || [];
-        const target = cur.find(function(b) { return b.id === bId; });
+        const target = cur.find(b => b.id === bId);
         if (!target) return;
         
         if (target.count + (target.draftCount || 0) === 0) {
           const islandsMap = {};
           const cLevel = randomLevelData || { islands: [] };
-          (cLevel.islands || []).forEach(function(i){ islandsMap[i.id] = i; });
+          (cLevel.islands || []).forEach(i => { islandsMap[i.id] = i; });
           const tFrom = islandsMap[target.from], tTo = islandsMap[target.to];
           let isCross = false;
           if (tFrom && tTo) {
@@ -559,9 +576,9 @@
           if (isCross) return showToast("🚫 橋樑不能交叉喔！請先移除阻擋的橋。");
         }
 
-        if (engineRef.current === 'none') setHistory(function(past) { return [...past, cur]; });
+        if (engineRef.current === 'none') setHistory(past => [...past, cur]);
         
-        const nextBridges = cur.map(function(b) { 
+        const nextBridges = cur.map(b => { 
             if (b.id !== bId) return b;
             
             let newCount = b.count;
@@ -598,7 +615,7 @@
         if (history.length === 0 || isWon || engineRef.current !== 'none') return;
         const previousState = history[history.length - 1];
         syncState({ bridges: previousState });
-        setHistory(function(past) { return past.slice(0, -1); });
+        setHistory(past => past.slice(0, -1));
       };
 
       const handleReset = () => {
@@ -609,7 +626,7 @@
       };
 
       const handleRegenerateRandom = () => {
-        const targetLevelDef = LEVELS.find(function(l) { return l.id === currentLevelId; }) || LEVELS[1];
+        const targetLevelDef = LEVELS.find(l => l.id === currentLevelId) || LEVELS[1];
         const newRandomData = generateRandomHashi(targetLevelDef);
         const empty = generateEmptyBridges(newRandomData);
         syncState({ levelId: currentLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
@@ -618,7 +635,7 @@
 
       const handleLevelChange = (newLevelId) => {
         if (engineRef.current !== 'none' && !isHostRef.current) return;
-        const targetLevelDef = LEVELS.find(function(l) { return l.id === newLevelId; });
+        const targetLevelDef = LEVELS.find(l => l.id === newLevelId);
         if(!targetLevelDef) return;
         const newRandomData = generateRandomHashi(targetLevelDef);
         const empty = generateEmptyBridges(newRandomData);
@@ -713,7 +730,7 @@
             if (!snap.exists()) { setIsConnecting(false); switchToOffline(); return showToast("⚠️ 找不到該對局大廳，請確認代碼"); }
             setIsHost(false); isHostRef.current = false;
             let pList = snap.data().players || [];
-            if (!pList.find(function(p){return p.id === myId;})) {
+            if (!pList.find(p => p.id === myId)) {
               pList.push({ id: myId, name: pName, isHost: false, color: COLORS[pList.length % COLORS.length] });
               await Promise.race([updateDoc(rDoc, { players: pList, updatedAt: Date.now() }), timeout(6000)]);
             }
@@ -757,38 +774,38 @@
                 connsRef.current.push(c);
                 c.on('data', function(m) {
                   if (m.type === 'JOIN') {
-                      setPlayersList(function(prev){
-                          if(prev.find(function(pl){return pl.id===m.uid;})) return prev;
+                      setPlayersList(prev => {
+                          if(prev.find(pl => pl.id===m.uid)) return prev;
                           const nList = [...prev, { id: m.uid, name: m.pName, isHost: false, color: COLORS[prev.length % COLORS.length] }];
-                          connsRef.current.forEach(function(conn) { conn.send({ type: 'INIT', data: stateRef.current, players: nList }); });
+                          connsRef.current.forEach(conn => conn.send({ type: 'INIT', data: stateRef.current, players: nList }));
                           return nList;
                       });
                   } else if (m.type === 'SYNC') {
                       syncState(m.data, false);
-                      connsRef.current.forEach(function(conn) { if(conn.peer !== c.peer) conn.send({ type: 'SYNC', data: m.data }); });
+                      connsRef.current.forEach(conn => { if(conn.peer !== c.peer) conn.send({ type: 'SYNC', data: m.data }); });
                   } else if (m.type === 'REQ_COLOR_CHANGE') {
-                      setPlayersList(function(prev){
-                          const nList = prev.map(function(pl){
-                              if (pl.id === m.targetId) return { ...pl, color: COLORS[(COLORS.indexOf(pl.color) + 1) % COLORS.length] };
+                      setPlayersList(prev => {
+                          const nList = prev.map(pl => {
+                              if (pl.id === m.targetId) return { ...pl, color: m.color };
                               return pl;
                           });
-                          connsRef.current.forEach(function(conn) { conn.send({ type: 'PLAYERS_UPDATE', players: nList }); });
+                          connsRef.current.forEach(conn => conn.send({ type: 'PLAYERS_UPDATE', players: nList }));
                           return nList;
                       });
                   } else if (m.type === 'CURSOR') {
-                      connsRef.current.forEach(function(conn) { if(conn.peer !== c.peer) conn.send(m); });
-                      setCursors(function(prev) { return { ...prev, [m.uid]: { x: m.x, y: m.y } }; });
+                      connsRef.current.forEach(conn => { if(conn.peer !== c.peer) conn.send(m); });
+                      setCursors(prev => ({ ...prev, [m.uid]: { x: m.x, y: m.y } }));
                   } else if (m.type === 'CLICK') {
-                      connsRef.current.forEach(function(conn) { if(conn.peer !== c.peer) conn.send(m); });
-                      setRipples(function(prev) { return [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]; });
+                      connsRef.current.forEach(conn => { if(conn.peer !== c.peer) conn.send(m); });
+                      setRipples(prev => [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]);
                   }
                 });
                 c.on('close', function() {
-                    connsRef.current = connsRef.current.filter(function(conn){return conn.peer !== c.peer;});
+                    connsRef.current = connsRef.current.filter(conn => conn.peer !== c.peer);
                 });
               });
             });
-            p.on('error', function(err) { setIsConnecting(false); switchToOffline(); showToast("⚠️ 無法建立對局大廳，請重試"); });
+            p.on('error', function() { setIsConnecting(false); switchToOffline(); showToast("⚠️ 無法建立對局大廳，請重試"); });
         } else {
             const guestP = new Peer();
             peerRef.current = guestP;
@@ -809,14 +826,14 @@
                   } else if (m.type === 'PLAYERS_UPDATE') {
                       if (m.players) setPlayersList(m.players);
                   } else if (m.type === 'CURSOR') {
-                      setCursors(function(prev) { return { ...prev, [m.uid]: { x: m.x, y: m.y } }; });
+                      setCursors(prev => ({ ...prev, [m.uid]: { x: m.x, y: m.y } }));
                   } else if (m.type === 'CLICK') {
-                      setRipples(function(prev) { return [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]; });
+                      setRipples(prev => [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]);
                   }
                 });
                 c.on('close', function() { showToast("⚠️ 主機已離線，切換為單機模式"); switchToOffline(); });
             });
-            guestP.on('error', function(err) { setIsConnecting(false); switchToOffline(); showToast("⚠️ 無法連線，請確認代碼是否正確"); });
+            guestP.on('error', function() { setIsConnecting(false); switchToOffline(); showToast("⚠️ 無法連線，請確認代碼是否正確"); });
         }
       };
 
@@ -824,39 +841,38 @@
         if (engineRef.current !== 'none') {
             if (unsubRef.current) unsubRef.current();
             if (isHostRef.current && engineRef.current === 'firebase' && roomRef.current) {
-               deleteDoc(roomRef.current).catch(function(e){});
+               deleteDoc(roomRef.current).catch(e => {});
             } else if (!isHostRef.current && engineRef.current === 'firebase' && roomRef.current) {
-               const updatedPlayers = playersList.filter(function(p){ return p.id !== myId; });
-               updateDoc(roomRef.current, { players: updatedPlayers }).catch(function(e){});
+               const updatedPlayers = playersList.filter(p => p.id !== myId);
+               updateDoc(roomRef.current, { players: updatedPlayers }).catch(e => {});
             }
             if (peerRef.current) peerRef.current.destroy();
         }
         switchToOffline(); setScreen('home'); setIsWon(false); setElapsedTime(0); setHistory([]);
       };
 
-      const handlePlayerColorChange = (playerId) => {
+      const handlePlayerColorChange = (playerId, newColor) => {
         if (engineRef.current === 'none') return;
-        if (playerId === myId) return; 
-
+        
         if (engineRef.current === 'firebase' && roomRef.current) {
-            const updatedPlayers = playersList.map(function(p) { 
-                if (p.id === playerId) return { ...p, color: COLORS[(COLORS.indexOf(p.color) + 1) % COLORS.length] }; 
+            const updatedPlayers = playersList.map(p => { 
+                if (p.id === playerId) return { ...p, color: newColor }; 
                 return p; 
             });
             setPlayersList(updatedPlayers);
-            updateDoc(roomRef.current, { players: updatedPlayers }).catch(function(e){});
+            updateDoc(roomRef.current, { players: updatedPlayers }).catch(e => {});
         } else if (engineRef.current === 'peerjs') {
             if (isHostRef.current) {
-                setPlayersList(function(prev){
-                    const nList = prev.map(function(p){
-                        if (p.id === playerId) return { ...p, color: COLORS[(COLORS.indexOf(p.color) + 1) % COLORS.length] };
+                setPlayersList(prev => {
+                    const nList = prev.map(p => {
+                        if (p.id === playerId) return { ...p, color: newColor };
                         return p;
                     });
-                    connsRef.current.forEach(function(c) { c.send({ type: 'PLAYERS_UPDATE', players: nList }); });
+                    connsRef.current.forEach(c => c.send({ type: 'PLAYERS_UPDATE', players: nList }));
                     return nList;
                 });
             } else if (connRef.current) {
-                connRef.current.send({ type: 'REQ_COLOR_CHANGE', targetId: playerId });
+                connRef.current.send({ type: 'REQ_COLOR_CHANGE', targetId: playerId, color: newColor });
             }
         }
       };
@@ -864,8 +880,8 @@
       const islandCurrentCounts = useMemo(function() {
         const counts = {};
         const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
-        islands.forEach(function(i) { counts[i.id] = { total: 0, real: 0 }; });
-        (bridges || []).forEach(function(b) {
+        islands.forEach(i => { counts[i.id] = { total: 0, real: 0 }; });
+        (bridges || []).forEach(b => {
           if (counts[b.from] !== undefined) {
              counts[b.from].total += b.count + (b.draftCount || 0);
              counts[b.from].real += b.count;
@@ -888,8 +904,8 @@
         }
         if (!allCountsMatch) { if (isWon) setIsWon(false); return; }
         
-        const adjList = {}; islands.forEach(function(i) { adjList[i.id] = []; });
-        (bridges || []).forEach(function(b) { 
+        const adjList = {}; islands.forEach(i => { adjList[i.id] = []; });
+        (bridges || []).forEach(b => { 
            if (b.count > 0 && adjList[b.from] && adjList[b.to]) { 
                adjList[b.from].push(b.to); adjList[b.to].push(b.from); 
            } 
@@ -899,7 +915,7 @@
         while (queue.length > 0) {
           const curr = queue.shift();
           if (adjList[curr]) {
-            adjList[curr].forEach(function(neighbor) { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } });
+            adjList[curr].forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } });
           }
         }
         if (visited.size === islands.length && islands.length > 0) { if (!isWon) { setIsWon(true); setHideVictoryModal(false); } } 
@@ -907,7 +923,7 @@
       }, [bridges, randomLevelData, islandCurrentCounts, isWon]);
 
       const handleSaveCode = () => {
-        const saveData = { lid: currentLevelId, r: randomLevelData, b: (bridges || []).filter(function(br){return br.count > 0 || (br.draftCount || 0) > 0;}).map(function(br){return { i: br.id, c: br.count, d: br.draftCount || 0, o: br.owner };}) };
+        const saveData = { lid: currentLevelId, r: randomLevelData, b: (bridges || []).filter(br => br.count > 0 || (br.draftCount || 0) > 0).map(br => ({ i: br.id, c: br.count, d: br.draftCount || 0, o: br.owner })) };
         const code = btoa(encodeURIComponent(JSON.stringify(saveData)));
         setSaveCode(code);
         const textArea = document.createElement("textarea"); textArea.value = code; document.body.appendChild(textArea); textArea.select();
@@ -924,36 +940,23 @@
         try {
           if (!saveCode.trim()) return showToast("⚠️ 請貼上代碼");
           const data = JSON.parse(decodeURIComponent(atob(saveCode.trim())));
-          const baseLevel = LEVELS.find(function(l){return l.id === data.lid;});
+          const baseLevel = LEVELS.find(l => l.id === data.lid);
           if (!baseLevel) return showToast("⚠️ 無效的代碼");
           
           const newRandom = data.r;
           const islandsToUse = newRandom && newRandom.islands ? newRandom.islands : baseLevel.islands;
           
           const emptyBridges = generateEmptyBridges({ islands: islandsToUse });
-          data.b.forEach(function(savedBr){ let tb = emptyBridges.find(function(eb){return eb.id === savedBr.i;}); if (tb) { tb.count = savedBr.c || 0; tb.draftCount = savedBr.d || 0; tb.owner = savedBr.o; } });
+          data.b.forEach(savedBr => { let tb = emptyBridges.find(eb => eb.id === savedBr.i); if (tb) { tb.count = savedBr.c || 0; tb.draftCount = savedBr.d || 0; tb.owner = savedBr.o; } });
           setCurrentLevelId(data.lid);
           syncState({ randomLevelData: newRandom, bridges: emptyBridges, showSolution: false });
           setIsWon(false); setShowSaveModal(false); showToast("✅ 讀取成功！");
         } catch(e) { showToast("⚠️ 讀檔失敗！"); }
       };
 
-      const handleZoomIn = () => { setZoomLevel(function(prev){return Math.min(prev + 0.3, 3.5);}); setZoomModeIdx(0); };
-      const handleZoomOut = () => { setZoomLevel(function(prev){return Math.max(prev - 0.3, 0.4);}); setZoomModeIdx(0); };
-
+      const handleZoomIn = () => { setZoomLevel(prev => Math.min(prev + 0.3, 3.5)); setZoomModeIdx(0); };
+      const handleZoomOut = () => { setZoomLevel(prev => Math.max(prev - 0.3, 0.4)); setZoomModeIdx(0); };
       const handleZoomReset = () => { setZoomLevel(1); setZoomModeIdx(0); };
-
-      const cLevel = randomLevelData || { islands: [], description: "" };
-      const islandsToRender = cLevel.islands || [];
-      const maxGridX = Math.max.apply(Math, islandsToRender.map(function(i) { return i.x; }).concat([6])); 
-      const maxGridY = Math.max.apply(Math, islandsToRender.map(function(i) { return i.y; }).concat([6]));
-      const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
-      const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
-      
-      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
-      const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
-      const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
-      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
       const handleCycleZoom = () => {
         const nextIdx = (zoomModeIdx + 1) % 4;
@@ -997,11 +1000,11 @@
                  </div>
                  <div className="flex flex-col gap-5">
                     <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-4 border-slate-800 rounded-xl font-black text-xl text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform rotate-1">👤 單機挑戰</button>
-                    <button onClick={function(){ setScreen('join'); }} className="w-full py-4 bg-emerald-400 border-4 border-slate-800 rounded-xl font-black text-xl text-slate-900 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform -rotate-1">🌐 多人對戰</button>
+                    <button onClick={() => setScreen('join')} className="w-full py-4 bg-emerald-400 border-4 border-slate-800 rounded-xl font-black text-xl text-slate-900 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform -rotate-1">🌐 多人合作</button>
                  </div>
               </div>
             </div>
-            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">葉大帥@2026 v1.0</div>
+            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.1)</div>
           </div>
         );
       }
@@ -1010,7 +1013,7 @@
         return (
           <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative animate-fadeIn">
             <div className="bg-[#fffaf0] border-4 border-slate-800 p-8 rounded-xl shadow-[10px_10px_0px_rgba(30,41,59,1)] max-w-2xl w-full z-10 transform rotate-1">
-              <h2 onClick={function(){
+              <h2 onClick={() => {
                 const newClicks = titleClicks + 1;
                 if (newClicks >= 3) {
                   setStableMode(!stableMode);
@@ -1022,7 +1025,7 @@
               
               <div className="mb-6 bg-white p-4 rounded-lg border-2 border-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)]">
                 <label className="block text-slate-800 font-black text-sm mb-2">第一步：設定顯示暱稱</label>
-                <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={function(e){setTempPlayerName(e.target.value);}} disabled={isConnecting} className="w-full border-2 border-slate-800 rounded-md p-3 font-bold bg-yellow-50 outline-none focus:ring-2 ring-[#ffcc00] disabled:opacity-50" />
+                <input type="text" placeholder="例如：王小明" value={tempPlayerName} onChange={(e) => setTempPlayerName(e.target.value)} disabled={isConnecting} className="w-full border-2 border-slate-800 rounded-md p-3 font-bold bg-yellow-50 outline-none focus:ring-2 ring-[#ffcc00] disabled:opacity-50" />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1040,14 +1043,14 @@
                 <div className="pt-4 md:pt-0 flex flex-col h-full">
                    <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-slate-800">👤 參與現有對局</h3>
                    <p className="text-xs text-slate-600 mb-2 font-bold leading-relaxed">請輸入主機分派的 4 碼邀請碼：</p>
-                   <input type="text" maxLength="5" placeholder="邀請碼" value={tempRoomId} onChange={function(e){setTempRoomId(e.target.value.toUpperCase());}} disabled={isConnecting} className="w-full border-4 border-slate-800 rounded-xl p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase shadow-[4px_4px_0px_rgba(30,41,59,1)] disabled:opacity-50" />
+                   <input type="text" maxLength="5" placeholder="邀請碼" value={tempRoomId} onChange={(e) => setTempRoomId(e.target.value.toUpperCase())} disabled={isConnecting} className="w-full border-4 border-slate-800 rounded-xl p-3 font-black text-center text-2xl mb-4 tracking-widest outline-none bg-emerald-50 uppercase shadow-[4px_4px_0px_rgba(30,41,59,1)] disabled:opacity-50" />
                    <button onClick={joinExistingGame} disabled={isConnecting} className="w-full py-3 bg-emerald-400 text-slate-900 border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all mt-auto disabled:opacity-50 disabled:cursor-not-allowed uppercase">
                      {isConnecting ? "加入中..." : "參與對局連線"}
                    </button>
                 </div>
               </div>
 
-              <button onClick={function(){setScreen('home');}} disabled={isConnecting} className="mt-8 w-full text-slate-400 font-bold hover:text-slate-800 hover:underline text-center transition-colors disabled:opacity-50">取消返回主選單</button>
+              <button onClick={() => setScreen('home')} disabled={isConnecting} className="mt-8 w-full text-slate-400 font-bold hover:text-slate-800 hover:underline text-center transition-colors disabled:opacity-50">取消返回主選單</button>
             </div>
             {toastMsg && <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full font-bold shadow-[0_4px_10px_rgba(0,0,0,0.3)] z-[100] border-[3px] border-white animate-slideUpFade">{toastMsg}</div>}
           </div>
@@ -1065,7 +1068,7 @@
                      <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 py-1 rounded-md font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-xs md:text-sm whitespace-nowrap">⏱ {formatTime(elapsedTime)}</div>
                      {isMultiplayer && ( <span className="bg-emerald-400 text-slate-900 px-2 py-1 rounded-md border-2 border-slate-800 font-black text-xs md:text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] flex items-center gap-1 whitespace-nowrap">{isHostRef.current ? '👑 主機' : '👤 玩家'} | 代碼: {roomId} {engineRef.current === 'firebase' && '☁️'}</span> )}
                   </div>
-                  <button onClick={function(){setIsHeaderCollapsed(!isHeaderCollapsed);}} className="flex px-2 md:px-3 py-1 bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800 items-center gap-1 whitespace-nowrap">{isHeaderCollapsed ? '🔽 展開規則' : '🔼 縮小面板'}</button>
+                  <button onClick={() => setIsHeaderCollapsed(!isHeaderCollapsed)} className="flex px-2 md:px-3 py-1 bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800 items-center gap-1 whitespace-nowrap">{isHeaderCollapsed ? '🔽 展開規則' : '🔼 縮小面板'}</button>
                </div>
 
                <div className={`w-full overflow-hidden transition-all duration-500 ease-in-out origin-top flex flex-col gap-2 ${isHeaderCollapsed ? 'max-h-0 opacity-0 scale-y-95' : 'max-h-[500px] opacity-100 scale-y-100'}`}>
@@ -1087,8 +1090,8 @@
                </div>
 
                <div className="flex flex-wrap gap-1.5 items-center justify-between w-full">
-                  <select disabled={isMultiplayer && !isHostRef.current} value={currentLevelId} onChange={function(e){handleLevelChange(Number(e.target.value));}} className="px-1 py-1 md:px-2 md:py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-sm outline-none shadow-[2px_2px_0px_#2d2a26] w-auto cursor-pointer max-w-[130px] sm:max-w-none truncate disabled:opacity-60 disabled:cursor-not-allowed">
-                     {LEVELS.map(function(level){return <option key={level.id} value={level.id}>{level.name}</option>;})}
+                  <select disabled={isMultiplayer && !isHostRef.current} value={currentLevelId} onChange={(e) => handleLevelChange(Number(e.target.value))} className="px-1 py-1 md:px-2 md:py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-sm outline-none shadow-[2px_2px_0px_#2d2a26] w-auto cursor-pointer max-w-[130px] sm:max-w-none truncate disabled:opacity-60 disabled:cursor-not-allowed">
+                     {LEVELS.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
                   </select>
                   
                   <div className="flex gap-1 md:gap-2 flex-wrap items-center ml-auto">
@@ -1096,25 +1099,51 @@
                      <button onClick={handleRegenerateRandom} className="px-2 py-1 md:px-3 md:py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="新題">🎲<span className="hidden sm:inline">新題</span></button>
                      {!isMultiplayer && ( <button onClick={handleUndo} disabled={history.length === 0 || isWon} className="px-2 py-1 md:px-3 md:py-1.5 bg-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] disabled:opacity-50 disabled:shadow-none active:translate-y-1 active:shadow-none transition-all flex items-center gap-1 text-[#2d2a26]" title="復原">↩️<span className="hidden sm:inline">復原</span></button> )}
                      <button onClick={handleReset} className="px-2 py-1 md:px-3 md:py-1.5 bg-red-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="重置">🔄<span className="hidden sm:inline">重置</span></button>
-                     <button onClick={function(){setShowSaveModal(true);}} className="px-2 py-1 md:px-3 md:py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="存檔/讀檔">💾<span className="hidden sm:inline">存檔</span></button>
+                     <button onClick={() => setShowSaveModal(true)} className="px-2 py-1 md:px-3 md:py-1.5 bg-blue-500 text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="存檔/讀檔">💾<span className="hidden sm:inline">存檔</span></button>
                      <button onClick={handleGoHome} className="bg-white text-[#2d2a26] border-2 border-[#2d2a26] px-2 py-1 md:px-3 md:py-1.5 rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_#2d2a26] active:translate-y-1 active:shadow-none transition-all flex items-center gap-1" title="回首頁/斷線">{!isMultiplayer ? '🏠' : '🔌'}<span className="hidden sm:inline ml-1">{!isMultiplayer ? '回首頁' : '退出'}</span></button>
                   </div>
                </div>
             </div>
 
             {isMultiplayer && (
-              <div className="px-4 py-2 bg-[#fffdfa] border-b-4 border-slate-800 flex flex-wrap gap-2 items-center z-10 shadow-inner shrink-0">
+              <div className="px-4 py-2 bg-[#fffdfa] border-b-4 border-slate-800 flex flex-wrap gap-2 items-center relative z-[25] shadow-inner shrink-0">
                 <span className="font-black text-slate-800 text-sm">👥 連線玩家：</span>
-                {playersList.map(function(p, idx) {
+                {playersList.map((p, idx) => {
                   const isMe = p.id === myId;
                   return (
-                    <span key={idx} 
-                          onClick={function(){ if (!isMe) handlePlayerColorChange(p.id); }} 
-                          title={isMe ? "這是你 (自己畫的線固定為黑色)" : "點擊可為這位同學更換顏色"} 
-                          className={`px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-white text-slate-800 flex items-center shadow-[1px_1px_0px_rgba(30,41,59,1)] ${!isMe ? 'cursor-pointer hover:bg-slate-100 transition-colors' : ''}`} 
-                          style={{ borderLeftColor: isMe ? '#1e293b' : p.color, borderLeftWidth: '6px' }}>
-                      {p.name} {p.isHost && '👑'} {isMe && '(你)'}
-                    </span>
+                    <div key={idx} className="relative inline-flex">
+                      <span 
+                            onClick={() => setColorPickerTarget(prev => prev === p.id ? null : p.id)} 
+                            title={isMe ? "點擊可切換你的代表色" : "點擊可為這位玩家更換顏色"} 
+                            className={`px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-white text-slate-800 flex items-center shadow-[1px_1px_0px_rgba(30,41,59,1)] cursor-pointer hover:bg-slate-100 transition-colors`} 
+                            style={{ borderLeftColor: p.color, borderLeftWidth: '6px' }}>
+                        {p.name} {p.isHost && '👑'} {isMe && '(你)'}
+                      </span>
+                      
+                      {colorPickerTarget === p.id && (
+                        <div className="absolute top-full mt-2 left-0 sm:left-0 bg-[#fffdfa] border-[3px] border-slate-800 rounded-xl p-3 shadow-[4px_4px_0px_rgba(30,41,59,1)] z-[100] w-[180px] animate-fadeIn">
+                          <div className="flex justify-between items-center mb-2 border-b-2 border-slate-800 pb-1">
+                            <h3 className="text-xs font-black text-slate-800">🎨 選色</h3>
+                            <button onClick={(e) => { e.stopPropagation(); setColorPickerTarget(null); }} className="text-slate-400 hover:text-slate-800 font-black leading-none">✕</button>
+                          </div>
+                          <div className="grid grid-cols-5 gap-1.5">
+                            {COLORS.map(color => (
+                              <button
+                                key={color}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlayerColorChange(p.id, color);
+                                  setColorPickerTarget(null);
+                                }}
+                                className="w-6 h-6 rounded-full border-[2px] border-slate-800 shadow-[1px_1px_0px_rgba(30,41,59,1)] hover:scale-110 hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all active:scale-95 active:shadow-none"
+                                style={{ backgroundColor: color }}
+                                title={color}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
                 {engineRef.current === 'peerjs' && (
@@ -1123,10 +1152,10 @@
                       <input 
                         type="checkbox" 
                         checked={showOtherCursors} 
-                        onChange={function(e) { setShowOtherCursors(e.target.checked); }} 
+                        onChange={(e) => setShowOtherCursors(e.target.checked)} 
                         className="w-3.5 h-3.5 md:w-4 md:h-4 accent-emerald-500" 
                       />
-                      顯示其他玩家作答軌跡
+                      顯示游標
                     </label>
                   </div>
                 )}
@@ -1167,8 +1196,8 @@
                     </defs>
                     <rect width="100%" height="100%" fill="url(#grid)" transform={`translate(${PADDING}, ${PADDING})`} className="opacity-50 pointer-events-none" />
 
-                    {showSolution && cLevel.solution && cLevel.solution.map(function(sol, idx) {
-                        const islandsMap = {}; islandsToRender.forEach(function(i) { islandsMap[i.id] = i; });
+                    {showSolution && cLevel.solution && cLevel.solution.map((sol, idx) => {
+                        const islandsMap = {}; islandsToRender.forEach(i => { islandsMap[i.id] = i; });
                         const f = islandsMap[sol.from], t = islandsMap[sol.to];
                         if (!f || !t) return null;
                         const x1 = f.x*SCALE+PADDING, y1 = f.y*SCALE+PADDING, x2 = t.x*SCALE+PADDING, y2 = t.y*SCALE+PADDING;
@@ -1195,9 +1224,9 @@
                         return null;
                     })}
 
-                    {bridges.map(function(b){
+                    {bridges.map(b => {
                       const totalLines = b.count + (b.draftCount || 0);
-                      const islMap = {}; islandsToRender.forEach(function(i){islMap[i.id]=i;});
+                      const islMap = {}; islandsToRender.forEach(i => { islMap[i.id] = i; });
                       const f=islMap[b.from], t=islMap[b.to];
                       if (!f || !t) return null;
                       const x1=f.x*SCALE+PADDING, y1=f.y*SCALE+PADDING, x2=t.x*SCALE+PADDING, y2=t.y*SCALE+PADDING;
@@ -1205,14 +1234,14 @@
                       let lineStroke = "#1e293b"; 
                       let lineOpacity = 1;
                       
-                      if (isMultiplayer && totalLines > 0 && b.owner && b.owner !== myId) {
-                          const ownerObj = playersList.find(function(p){return p.id === b.owner;});
-                          lineStroke = ownerObj ? ownerObj.color : "#94a3b8"; 
-                          lineOpacity = 0.5; 
+                      if (isMultiplayer && totalLines > 0 && b.owner) {
+                          const ownerObj = playersList.find(p => p.id === b.owner);
+                          if (ownerObj) lineStroke = ownerObj.color;
+                          if (b.owner !== myId) lineOpacity = 0.5; 
                       }
 
                       if (totalLines === 0) return (
-                        <g key={b.id} onClick={function(){ handleBridgeClick(b.id); }} className="cursor-pointer group">
+                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className="cursor-pointer group">
                            {b.type === 'h' ? (
                               <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
                             ) : (
@@ -1238,13 +1267,13 @@
                       }
 
                       return (
-                        <g key={b.id} onClick={function(){ handleBridgeClick(b.id); }} className="cursor-pointer group">
+                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className="cursor-pointer group">
                           {b.type === 'h' ? (
                             <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
                           ) : (
                             <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
                           )}
-                          {linesToDraw.map(function(lineObj, lIdx) {
+                          {linesToDraw.map((lineObj, lIdx) => {
                               const isDraft = lineObj.isDraft;
                               const off = lineObj.offset;
                               const w = totalLines === 1 ? (isDraft ? "5" : "6") : (isDraft ? "4" : "5");
@@ -1260,7 +1289,7 @@
                       );
                     })}
 
-                    {islandsToRender.map(function(island){
+                    {islandsToRender.map(island => {
                       const cx = island.x * SCALE + PADDING; const cy = island.y * SCALE + PADDING; const current = islandCurrentCounts[island.id].total;
                       let strokeColor = "#1e293b"; let bgColor = "#ffffff"; let textColor = "#1e293b";
                       if (current === island.req) { strokeColor = "#059669"; bgColor = "#d1fae5"; textColor = "#065f46"; } 
@@ -1274,11 +1303,10 @@
                       );
                     })}
 
-                    {/* === 其他玩家的即時游標與姓名標籤 === */}
-                    {showOtherCursors && engineRef.current === 'peerjs' && Object.entries(cursors).map(function(entry) {
+                    {showOtherCursors && engineRef.current === 'peerjs' && Object.entries(cursors).map(entry => {
                         const uid = entry[0]; const pos = entry[1];
                         if (uid === myId) return null;
-                        const player = playersList.find(function(p) { return p.id === uid; });
+                        const player = playersList.find(p => p.id === uid);
                         if (!player) return null;
                         return (
                             <g key={`cursor-${uid}`} transform={`translate(${pos.x}, ${pos.y})`} className="pointer-events-none transition-transform duration-75 ease-linear">
@@ -1289,24 +1317,11 @@
                         );
                     })}
 
-                    {/* === 其他玩家與自己的點擊水波紋 === */}
-                    {showOtherCursors && engineRef.current === 'peerjs' && ripples.map(function(r) {
-                        const player = playersList.find(function(p) { return p.id === r.uid; });
+                    {showOtherCursors && engineRef.current === 'peerjs' && ripples.map(r => {
+                        const player = playersList.find(p => p.id === r.uid);
                         const color = player ? player.color : '#3b82f6';
                         return (
-                            <circle 
-                                key={r.id} 
-                                cx={r.x} 
-                                cy={r.y} 
-                                r="20" 
-                                fill="none" 
-                                stroke={color} 
-                                className="pointer-events-none"
-                                style={{
-                                    transformOrigin: `${r.x}px ${r.y}px`,
-                                    animation: 'rippleAnim 0.8s ease-out forwards'
-                                }}
-                            />
+                            <circle key={r.id} cx={r.x} cy={r.y} r="20" fill="none" stroke={color} className="pointer-events-none" style={{ transformOrigin: `${r.x}px ${r.y}px`, animation: 'rippleAnim 0.8s ease-out forwards' }} />
                         );
                     })}
                   </svg>
@@ -1330,12 +1345,13 @@
               
               {isWon && hideVictoryModal && (
                 <div className="absolute bottom-6 inset-x-0 flex justify-center z-50 pointer-events-none">
-                  <button onClick={function(){setHideVictoryModal(false);}} className="pointer-events-auto bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] hover:translate-y-[2px] transition-all font-black flex items-center gap-2 tracking-wide text-lg">🏆 顯示成績</button>
+                  <button onClick={() => setHideVictoryModal(false)} className="pointer-events-auto bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] hover:translate-y-[2px] transition-all font-black flex items-center gap-2 tracking-wide text-lg">🏆 顯示成績</button>
                 </div>
               )}
             </div>
           </div>
 
+          {/* 存檔彈窗 */}
           {showSaveModal && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
               <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_rgba(30,41,59,1)] w-full max-w-md animate-popUp">
@@ -1344,12 +1360,12 @@
                 <div className="mb-6">
                   <button onClick={handleSaveCode} className="w-full py-3 bg-blue-500 text-white border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all mb-3 text-base md:text-lg">產生進度代碼 (自動複製)</button>
                   <div className="relative">
-                    <textarea id="saveCodeTextarea" value={saveCode} onChange={function(e){setSaveCode(e.target.value);}} placeholder="點擊上方按鈕生成，或是手動貼上舊代碼至此處" rows="4" className="w-full border-4 border-slate-800 rounded-xl p-3 pb-12 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white" />
+                    <textarea id="saveCodeTextarea" value={saveCode} onChange={(e) => setSaveCode(e.target.value)} placeholder="點擊上方按鈕生成，或是手動貼上舊代碼至此處" rows="4" className="w-full border-4 border-slate-800 rounded-xl p-3 pb-12 font-mono text-sm shadow-inner outline-none focus:bg-blue-50 break-all bg-white" />
                     <button onClick={handleQuickPaste} className="absolute bottom-3 right-3 bg-[#ffcc00] text-slate-900 px-3 py-1.5 rounded-lg text-sm font-black border-2 border-slate-800 hover:bg-[#e6b800] shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all active:translate-y-1 active:shadow-none">📋 快速貼上</button>
                   </div>
                 </div>
                 <div className="flex gap-4">
-                  <button onClick={function(){setShowSaveModal(false);}} className="flex-1 py-3 bg-white border-4 border-slate-800 rounded-xl font-black text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all">關閉</button>
+                  <button onClick={() => setShowSaveModal(false)} className="flex-1 py-3 bg-white border-4 border-slate-800 rounded-xl font-black text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all">關閉</button>
                   <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-slate-900 border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all">載入代碼</button>
                 </div>
               </div>
