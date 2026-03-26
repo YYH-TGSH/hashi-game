@@ -46,6 +46,27 @@
     .animate-slideUpFade {
       animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
     }
+    @keyframes popUpCenter {
+      0% { transform: scale(0.8); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-popUpCenter {
+      animation: popUpCenter 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    @keyframes popOutCenter {
+      0% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(0.8); opacity: 0; }
+    }
+    .animate-popOutCenter {
+      animation: popOutCenter 0.3s ease-in forwards;
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+    .animate-fadeOut {
+      animation: fadeOut 0.3s ease-in forwards;
+    }
     .custom-scrollbar::-webkit-scrollbar { width: 12px; height: 12px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-left: 2px solid #1e293b; border-top: 2px solid #1e293b; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border: 2px solid #1e293b; border-radius: 6px; }
@@ -283,18 +304,17 @@
       const playerIdRef = useRef(Math.random().toString(36).substring(2, 12));
       const myId = playerIdRef.current;
 
-      // === 基本狀態 ===
+      const initialDataRef = useRef(null);
+      if (!initialDataRef.current) {
+        initialDataRef.current = generateRandomHashi(LEVELS[1]);
+      }
+
       const [user, setUser] = useState(null);
       const [authError, setAuthError] = useState(""); 
       const [screen, setScreen] = useState('home');
       const [engine, setEngine] = useState('none');
       const [currentLevelId, setCurrentLevelId] = useState(2); 
       
-      // 確保初始化地圖與橋樑的資料來源完全一致
-      const initialDataRef = useRef(null);
-      if (!initialDataRef.current) {
-        initialDataRef.current = generateRandomHashi(LEVELS[1]);
-      }
       const [randomLevelData, setRandomLevelData] = useState(initialDataRef.current);
       const [bridges, setBridges] = useState(() => generateEmptyBridges(initialDataRef.current));
       
@@ -311,10 +331,9 @@
       const [showSaveModal, setShowSaveModal] = useState(false);
       const [saveCode, setSaveCode] = useState("");
       
-      // 草稿模式狀態
       const [isDraftMode, setIsDraftMode] = useState(false);
+      const [isClosingModal, setIsClosingModal] = useState(false);
 
-      // === 多人連線狀態 ===
       const [roomId, setRoomId] = useState("");
       const [isHost, setIsHost] = useState(false);
       const [tempRoomId, setTempRoomId] = useState("");
@@ -326,7 +345,6 @@
 
       const isMultiplayer = engine !== 'none';
 
-      // === Refs 突破閉包 ===
       const engineRef = useRef('none');
       const isHostRef = useRef(false);
       const peerRef = useRef(null);
@@ -338,7 +356,6 @@
       const lastPinchDist = useRef(null);
       const stateRef = useRef({ bridges: [], levelId: 2, randomLevelData: null, showSolution: false, startTime: Date.now() });
 
-      // === 初始化 Firebase Auth ===
       useEffect(function() {
         const initAuth = async function() {
           try {
@@ -366,7 +383,6 @@
         return function() { clearInterval(t); };
       }, [startTime, isWon, screen]);
 
-      // 畫布縮放與面板自動收合
       useEffect(function() {
         if (screen !== 'game') return;
         const el = zoomContainerRef.current;
@@ -408,7 +424,6 @@
 
       const showToast = (m) => { setToastMsg(m); setTimeout(function() { setToastMsg(""); }, 4000); };
 
-      // === 遊戲狀態同步 ===
       const syncState = (partial, shouldBroadcast = true) => {
         if (partial.bridges !== undefined) setBridges(partial.bridges);
         if (partial.showSolution !== undefined) setShowSolution(partial.showSolution);
@@ -433,7 +448,6 @@
         }
       };
 
-      // 橋樑點擊與防呆 (支援草稿模式)
       const handleBridgeClick = (bId) => {
         if (isWon) return;
         const cur = bridges || [];
@@ -484,7 +498,6 @@
                } else if (b.count === 0) {
                   newDraftCount = (newDraftCount + 1) % 3;
                }
-               // 如果 b.count === 2，無反應
             } else {
                if (newDraftCount > 0) {
                   newCount = b.count + newDraftCount;
@@ -500,7 +513,6 @@
         syncState({ bridges: nextBridges });
       };
 
-      // === 工具按鈕動作 ===
       const handleUndo = () => {
         if (history.length === 0 || isWon || engineRef.current !== 'none') return;
         const previousState = history[history.length - 1];
@@ -535,7 +547,22 @@
 
       const handleShowSolution = () => { syncState({ showSolution: true }); };
 
-      // === 切換單機模式 ===
+      const closeVictoryModal = () => {
+        setIsClosingModal(true);
+        setTimeout(() => {
+          setHideVictoryModal(true);
+          setIsClosingModal(false);
+        }, 300);
+      };
+
+      const triggerRegenerate = () => {
+        setIsClosingModal(true);
+        setTimeout(() => {
+          setIsClosingModal(false);
+          handleRegenerateRandom();
+        }, 300);
+      };
+
       const switchToOffline = () => {
         if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
         if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
@@ -545,7 +572,6 @@
         roomRef.current = null; connsRef.current = []; connRef.current = null;
       };
 
-      // === 多人連線雙引擎核心 ===
       const startSinglePlayer = () => {
         switchToOffline(); setScreen('game'); handleReset(); setIsHeaderCollapsed(false);
       };
@@ -743,7 +769,6 @@
         }
       };
 
-      // === 過關判定與島嶼計算 ===
       const islandCurrentCounts = useMemo(function() {
         const counts = {};
         const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
@@ -767,14 +792,12 @@
         
         let allCountsMatch = true;
         for (let i=0; i<islands.length; i++) { 
-           // 只有「實線」才算成功過關
            if (islandCurrentCounts[islands[i].id].real !== islands[i].req) { allCountsMatch = false; break; } 
         }
         if (!allCountsMatch) { if (isWon) setIsWon(false); return; }
         
         const adjList = {}; islands.forEach(function(i) { adjList[i.id] = []; });
         (bridges || []).forEach(function(b) { 
-           // 只有「實線」才能讓圖形連通
            if (b.count > 0 && adjList[b.from] && adjList[b.to]) { 
                adjList[b.from].push(b.to); adjList[b.to].push(b.from); 
            } 
@@ -791,7 +814,6 @@
         else { setIsWon(false); }
       }, [bridges, randomLevelData, islandCurrentCounts, isWon]);
 
-      // 存讀檔
       const handleSaveCode = () => {
         const saveData = { lid: currentLevelId, r: randomLevelData, b: (bridges || []).filter(function(br){return br.count > 0 || (br.draftCount || 0) > 0;}).map(function(br){return { i: br.id, c: br.count, d: br.draftCount || 0, o: br.owner };}) };
         const code = btoa(encodeURIComponent(JSON.stringify(saveData)));
@@ -828,7 +850,6 @@
       const handleZoomOut = () => setZoomLevel(function(prev){return Math.max(prev - 0.3, 0.4);});
       const handleZoomReset = () => setZoomLevel(1);
 
-      // === 網格與畫布尺寸計算 ===
       const cLevel = randomLevelData || { islands: [], description: "" };
       const islandsToRender = cLevel.islands || [];
       const maxGridX = Math.max.apply(Math, islandsToRender.map(function(i) { return i.x; }).concat([6])); 
@@ -841,7 +862,6 @@
       const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
       const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
-      // === UI 渲染 ===
       if (screen === 'home') {
         return (
           <div className="h-screen w-screen flex flex-col items-center justify-center p-4 relative overflow-hidden animate-fadeIn">
@@ -856,7 +876,7 @@
                  </div>
                  <div className="flex flex-col gap-5">
                     <button onClick={startSinglePlayer} className="w-full py-4 bg-white border-4 border-slate-800 rounded-xl font-black text-xl text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform rotate-1">👤 單機挑戰</button>
-                    <button onClick={function(){ setScreen('join'); }} className="w-full py-4 bg-emerald-400 border-4 border-slate-800 rounded-xl font-black text-xl text-slate-900 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform -rotate-1">🌐 多人合作</button>
+                    <button onClick={function(){ setScreen('join'); }} className="w-full py-4 bg-emerald-400 border-4 border-slate-800 rounded-xl font-black text-xl text-slate-900 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all transform -rotate-1">🌐 多人對戰</button>
                  </div>
               </div>
             </div>
@@ -886,8 +906,8 @@
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="border-t-4 md:border-t-0 md:border-r-4 border-dashed border-slate-300 pt-4 md:pt-0 md:pr-6 flex flex-col h-full">
-                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-slate-800">👑 建立對局大廳</h3>
-                   <p className="text-xs text-slate-600 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供其他玩家加入。</p>
+                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-[#2d2a26]">👑 建立對局大廳</h3>
+                   <p className="text-xs text-slate-500 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供其他玩家加入。</p>
                    <div className="mt-auto">
                      {stableMode && <div className="text-xs font-black text-emerald-600 mb-2 animate-pulse">✓ 雲端模式準備就緒</div>}
                      <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase">
@@ -969,7 +989,7 @@
                   return (
                     <span key={idx} 
                           onClick={function(){ if (!isMe) handlePlayerColorChange(p.id); }} 
-                          title={isMe ? "這是你 (自己畫的線固定為黑色)" : "點擊可為這位玩家更換顏色"} 
+                          title={isMe ? "這是你 (自己畫的線固定為黑色)" : "點擊可為這位同學更換顏色"} 
                           className={`px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-white text-slate-800 flex items-center shadow-[1px_1px_0px_rgba(30,41,59,1)] ${!isMe ? 'cursor-pointer hover:bg-slate-100 transition-colors' : ''}`} 
                           style={{ borderLeftColor: isMe ? '#1e293b' : p.color, borderLeftWidth: '6px' }}>
                       {p.name} {p.isHost && '👑'} {isMe && '(你)'}
@@ -1114,33 +1134,33 @@
                   </svg>
                 </div>
               </div>
+              
+              {isWon && !hideVictoryModal && (
+                <div className={`absolute inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] pointer-events-auto ${isClosingModal ? 'animate-fadeOut' : 'animate-fadeIn'}`}>
+                  <div className={`bg-white rounded-2xl p-6 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] relative ${isClosingModal ? 'animate-popOutCenter' : 'animate-popUpCenter'}`}>
+                    <button onClick={closeVictoryModal} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
+                    <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
+                    <h2 className="text-2xl md:text-3xl font-black text-[#2d2a26] mb-2 uppercase tracking-wide">PERFECT!</h2>
+                    <p className="text-slate-600 mb-1 text-sm md:text-base font-bold">所有的島嶼都成功連結了！</p>
+                    <p className="text-blue-600 mb-6 text-sm md:text-base font-bold border-b-[3px] border-dashed border-slate-300 pb-4">完成時間：{formatTime(elapsedTime)}</p>
+                    <div className="flex justify-center gap-3">
+                      <button onClick={triggerRegenerate} className="px-5 py-3 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] font-black rounded-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all text-base md:text-lg">再來一局 ➔</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {isWon && hideVictoryModal && (
+                <div className="absolute bottom-6 inset-x-0 flex justify-center z-50 pointer-events-none">
+                  <button onClick={function(){setHideVictoryModal(false);}} className="pointer-events-auto bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] hover:translate-y-[2px] transition-all font-black flex items-center gap-2 tracking-wide text-lg">🏆 顯示成績</button>
+                </div>
+              )}
             </div>
           </div>
 
-          {isWon && !hideVictoryModal && (
-            <div className="fixed inset-x-0 bottom-6 flex justify-center pointer-events-none z-[60] bg-slate-900/20 backdrop-blur-[2px] animate-fadeIn">
-              <div className="pointer-events-auto bg-white rounded-2xl p-6 md:p-8 border-[4px] border-[#2d2a26] shadow-[8px_8px_0px_#2d2a26] text-center min-w-[280px] md:min-w-[320px] animate-popUpCenter relative">
-                <button onClick={function(){setHideVictoryModal(true);}} className="absolute top-2 right-4 text-slate-400 hover:text-[#2d2a26] text-2xl font-black">✕</button>
-                <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
-                <h2 className="text-2xl md:text-3xl font-black text-[#2d2a26] mb-2 uppercase tracking-wide">PERFECT!</h2>
-                <p className="text-slate-600 mb-1 text-sm md:text-base font-bold">所有的島嶼都成功連結了！</p>
-                <p className="text-blue-600 mb-6 text-sm md:text-base font-bold border-b-[3px] border-dashed border-slate-300 pb-4">完成時間：{formatTime(elapsedTime)}</p>
-                <div className="flex justify-center gap-3">
-                  <button onClick={handleRegenerateRandom} className="px-5 py-3 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] font-black rounded-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all text-base md:text-lg">再來一局 ➔</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isWon && hideVictoryModal && (
-            <div className="fixed bottom-6 inset-x-0 flex justify-center z-50 pointer-events-none">
-              <button onClick={function(){setHideVictoryModal(false);}} className="pointer-events-auto bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] px-6 py-3 rounded-full shadow-[6px_6px_0px_#2d2a26] hover:translate-y-[2px] transition-all font-black flex items-center gap-2 tracking-wide text-lg">🏆 顯示成績</button>
-            </div>
-          )}
-
           {showSaveModal && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-              <div className="bg-[#fffdfa] border-4 border-slate-800 rounded-2xl p-6 shadow-[10px_10px_0px_rgba(30,41,59,1)] w-full max-w-md animate-popUp">
+              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_rgba(30,41,59,1)] w-full max-w-md animate-popUp">
                 <h2 className="text-2xl font-black text-slate-800 mb-2 border-b-4 border-blue-500 inline-block pb-1">💾 存檔與讀檔</h2>
                 <p className="text-sm font-bold text-slate-600 mb-4">將進度轉換為代碼，下次貼上代碼即可恢復！</p>
                 <div className="mb-6">
