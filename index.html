@@ -67,6 +67,10 @@
     .animate-fadeOut {
       animation: fadeOut 0.3s ease-in forwards;
     }
+    @keyframes rippleAnim {
+      0% { transform: scale(0.1); opacity: 0.8; stroke-width: 6px; }
+      100% { transform: scale(3); opacity: 0; stroke-width: 2px; }
+    }
     .custom-scrollbar::-webkit-scrollbar { width: 12px; height: 12px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-left: 2px solid #1e293b; border-top: 2px solid #1e293b; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border: 2px solid #1e293b; border-radius: 6px; }
@@ -332,9 +336,10 @@
       const [saveCode, setSaveCode] = useState("");
       
       const [isDraftMode, setIsDraftMode] = useState(false);
-      const [zoomModeIdx, setZoomModeIdx] = useState(0); // 縮放模式循環狀態
+      const [zoomModeIdx, setZoomModeIdx] = useState(0); 
       const [isClosingModal, setIsClosingModal] = useState(false);
 
+      // === 多人連線與游標狀態 ===
       const [roomId, setRoomId] = useState("");
       const [isHost, setIsHost] = useState(false);
       const [tempRoomId, setTempRoomId] = useState("");
@@ -344,8 +349,15 @@
       const [playersList, setPlayersList] = useState([]);
       const [isConnecting, setIsConnecting] = useState(false);
 
+      const [showOtherCursors, setShowOtherCursors] = useState(true);
+      const [cursors, setCursors] = useState({});
+      const [ripples, setRipples] = useState([]);
+      
       const isMultiplayer = engine !== 'none';
+      const svgRef = useRef(null);
+      const lastCursorSend = useRef(0);
 
+      // === Refs 突破閉包 ===
       const engineRef = useRef('none');
       const isHostRef = useRef(false);
       const peerRef = useRef(null);
@@ -356,19 +368,6 @@
       const zoomContainerRef = useRef(null);
       const lastPinchDist = useRef(null);
       const stateRef = useRef({ bridges: [], levelId: 2, randomLevelData: null, showSolution: false, startTime: Date.now() });
-
-      // === 網格與畫布尺寸計算提前至此 ===
-      const cLevel = randomLevelData || { islands: [], description: "" };
-      const islandsToRender = cLevel.islands || [];
-      const maxGridX = Math.max.apply(Math, islandsToRender.map(function(i) { return i.x; }).concat([6])); 
-      const maxGridY = Math.max.apply(Math, islandsToRender.map(function(i) { return i.y; }).concat([6]));
-      const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
-      const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
-      
-      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
-      const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
-      const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
-      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
       useEffect(function() {
         const initAuth = async function() {
@@ -397,6 +396,7 @@
         return function() { clearInterval(t); };
       }, [startTime, isWon, screen]);
 
+      // 畫布縮放與面板自動收合
       useEffect(function() {
         if (screen !== 'game') return;
         const el = zoomContainerRef.current;
@@ -440,7 +440,63 @@
         };
       }, [screen, isHeaderCollapsed]);
 
+      // 定期清理過期的水波紋動畫
+      useEffect(function() {
+        if (ripples.length === 0) return;
+        const timer = setTimeout(function() {
+            const now = Date.now();
+            setRipples(function(prev) { return prev.filter(function(r) { return now - r.timestamp < 1000; }); });
+        }, 1000);
+        return function() { clearTimeout(timer); };
+      }, [ripples]);
+
       const showToast = (m) => { setToastMsg(m); setTimeout(function() { setToastMsg(""); }, 4000); };
+
+      // === 游標與水波事件廣播 ===
+      const getSvgCoords = (clientX, clientY) => {
+        const svg = svgRef.current;
+        if (!svg) return null;
+        let pt = svg.createSVGPoint();
+        pt.x = clientX;
+        pt.y = clientY;
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return null;
+        return pt.matrixTransform(ctm.inverse());
+      };
+
+      const handlePointerMove = (e) => {
+        if (engineRef.current !== 'peerjs' || !showOtherCursors) return;
+        if (Date.now() - lastCursorSend.current < 50) return; // 限制廣播頻率 (約20fps)
+        lastCursorSend.current = Date.now();
+        const pt = getSvgCoords(e.clientX, e.clientY);
+        if (pt) {
+            const msg = { type: 'CURSOR', uid: myId, x: pt.x, y: pt.y };
+            if (isHostRef.current) {
+                connsRef.current.forEach(function(c) { c.send(msg); });
+            } else if (connRef.current) {
+                connRef.current.send(msg);
+            }
+        }
+      };
+
+      const handlePointerDown = (e) => {
+        if (engineRef.current !== 'peerjs' || !showOtherCursors) return;
+        const pt = getSvgCoords(e.clientX, e.clientY);
+        if (pt) {
+            const msg = { type: 'CLICK', uid: myId, x: pt.x, y: pt.y };
+            
+            // 立即新增本地端的水波紋 (確保自己也能看見)
+            setRipples(function(prev) { 
+                return [...prev, { id: Date.now() + Math.random(), uid: myId, x: pt.x, y: pt.y, timestamp: Date.now() }]; 
+            });
+            
+            if (isHostRef.current) {
+                connsRef.current.forEach(function(c) { c.send(msg); });
+            } else if (connRef.current) {
+                connRef.current.send(msg);
+            }
+        }
+      };
 
       const syncState = (partial, shouldBroadcast = true) => {
         if (partial.bridges !== undefined) setBridges(partial.bridges);
@@ -466,6 +522,7 @@
         }
       };
 
+      // 橋樑點擊與防呆
       const handleBridgeClick = (bId) => {
         if (isWon) return;
         const cur = bridges || [];
@@ -594,6 +651,7 @@
         setIsHost(false); isHostRef.current = false;
         setRoomId(""); setPlayersList([]);
         roomRef.current = null; connsRef.current = []; connRef.current = null;
+        setCursors({}); setRipples([]);
       };
 
       const startSinglePlayer = () => {
@@ -717,6 +775,12 @@
                           connsRef.current.forEach(function(conn) { conn.send({ type: 'PLAYERS_UPDATE', players: nList }); });
                           return nList;
                       });
+                  } else if (m.type === 'CURSOR') {
+                      connsRef.current.forEach(function(conn) { if(conn.peer !== c.peer) conn.send(m); });
+                      setCursors(function(prev) { return { ...prev, [m.uid]: { x: m.x, y: m.y } }; });
+                  } else if (m.type === 'CLICK') {
+                      connsRef.current.forEach(function(conn) { if(conn.peer !== c.peer) conn.send(m); });
+                      setRipples(function(prev) { return [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]; });
                   }
                 });
                 c.on('close', function() {
@@ -744,6 +808,10 @@
                       syncState(m.data, false);
                   } else if (m.type === 'PLAYERS_UPDATE') {
                       if (m.players) setPlayersList(m.players);
+                  } else if (m.type === 'CURSOR') {
+                      setCursors(function(prev) { return { ...prev, [m.uid]: { x: m.x, y: m.y } }; });
+                  } else if (m.type === 'CLICK') {
+                      setRipples(function(prev) { return [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]; });
                   }
                 });
                 c.on('close', function() { showToast("⚠️ 主機已離線，切換為單機模式"); switchToOffline(); });
@@ -872,6 +940,20 @@
 
       const handleZoomIn = () => { setZoomLevel(function(prev){return Math.min(prev + 0.3, 3.5);}); setZoomModeIdx(0); };
       const handleZoomOut = () => { setZoomLevel(function(prev){return Math.max(prev - 0.3, 0.4);}); setZoomModeIdx(0); };
+
+      const handleZoomReset = () => { setZoomLevel(1); setZoomModeIdx(0); };
+
+      const cLevel = randomLevelData || { islands: [], description: "" };
+      const islandsToRender = cLevel.islands || [];
+      const maxGridX = Math.max.apply(Math, islandsToRender.map(function(i) { return i.x; }).concat([6])); 
+      const maxGridY = Math.max.apply(Math, islandsToRender.map(function(i) { return i.y; }).concat([6]));
+      const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
+      const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
+      
+      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
+      const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
+      const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
+      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
       const handleCycleZoom = () => {
         const nextIdx = (zoomModeIdx + 1) % 4;
@@ -1035,6 +1117,19 @@
                     </span>
                   );
                 })}
+                {engineRef.current === 'peerjs' && (
+                  <div className="ml-auto flex items-center">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs md:text-sm font-bold text-slate-700 hover:text-slate-900 bg-slate-100 px-2 py-1 rounded-md border-2 border-slate-300 shadow-[1px_1px_0px_rgba(30,41,59,1)] transition-colors hover:bg-slate-200">
+                      <input 
+                        type="checkbox" 
+                        checked={showOtherCursors} 
+                        onChange={function(e) { setShowOtherCursors(e.target.checked); }} 
+                        className="w-3.5 h-3.5 md:w-4 md:h-4 accent-emerald-500" 
+                      />
+                      顯示其他玩家作答軌跡
+                    </label>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1058,7 +1153,13 @@
 
               <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative">
                 <div className="flex justify-center items-center min-w-max min-h-max m-auto pb-24 pr-20">
-                  <svg viewBox={`0 0 ${svgW} ${svgH}`} className="bg-transparent transition-transform duration-100 ease-out origin-center" style={{ width: `${svgW * zoomLevel}px`, height: `${svgH * zoomLevel}px`, touchAction: 'manipulation' }}>
+                  <svg 
+                    ref={svgRef}
+                    onPointerMove={handlePointerMove}
+                    onPointerDown={handlePointerDown}
+                    viewBox={`0 0 ${svgW} ${svgH}`} 
+                    className="bg-transparent transition-transform duration-100 ease-out origin-center" 
+                    style={{ width: `${svgW * zoomLevel}px`, height: `${svgH * zoomLevel}px`, touchAction: 'manipulation' }}>
                     <defs>
                       <pattern id="grid" width={SCALE} height={SCALE} patternUnits="userSpaceOnUse">
                         <path d={`M ${SCALE} 0 L 0 0 0 ${SCALE}`} fill="none" stroke="#e2e8f0" strokeWidth="1"/>
@@ -1171,6 +1272,42 @@
                           <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none transition-colors duration-300" fill={textColor}>{island.req}</text>
                         </g>
                       );
+                    })}
+
+                    {/* === 其他玩家的即時游標與姓名標籤 === */}
+                    {showOtherCursors && engineRef.current === 'peerjs' && Object.entries(cursors).map(function(entry) {
+                        const uid = entry[0]; const pos = entry[1];
+                        if (uid === myId) return null;
+                        const player = playersList.find(function(p) { return p.id === uid; });
+                        if (!player) return null;
+                        return (
+                            <g key={`cursor-${uid}`} transform={`translate(${pos.x}, ${pos.y})`} className="pointer-events-none transition-transform duration-75 ease-linear">
+                               <path d="M0,0 L16,6 L10,10 L15,19 L11,21 L6,12 L0,18 Z" fill={player.color} stroke="white" strokeWidth="2" />
+                               <rect x="14" y="22" rx="4" ry="4" width={player.name.length * 14 + 12} height="22" fill="rgba(0,0,0,0.6)" />
+                               <text x="20" y="37" fill="white" fontSize="13" fontWeight="bold">{player.name}</text>
+                            </g>
+                        );
+                    })}
+
+                    {/* === 其他玩家與自己的點擊水波紋 === */}
+                    {showOtherCursors && engineRef.current === 'peerjs' && ripples.map(function(r) {
+                        const player = playersList.find(function(p) { return p.id === r.uid; });
+                        const color = player ? player.color : '#3b82f6';
+                        return (
+                            <circle 
+                                key={r.id} 
+                                cx={r.x} 
+                                cy={r.y} 
+                                r="20" 
+                                fill="none" 
+                                stroke={color} 
+                                className="pointer-events-none"
+                                style={{
+                                    transformOrigin: `${r.x}px ${r.y}px`,
+                                    animation: 'rippleAnim 0.8s ease-out forwards'
+                                }}
+                            />
+                        );
                     })}
                   </svg>
                 </div>
