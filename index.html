@@ -332,6 +332,7 @@
       const [saveCode, setSaveCode] = useState("");
       
       const [isDraftMode, setIsDraftMode] = useState(false);
+      const [zoomModeIdx, setZoomModeIdx] = useState(0); // 縮放模式循環狀態
       const [isClosingModal, setIsClosingModal] = useState(false);
 
       const [roomId, setRoomId] = useState("");
@@ -355,6 +356,19 @@
       const zoomContainerRef = useRef(null);
       const lastPinchDist = useRef(null);
       const stateRef = useRef({ bridges: [], levelId: 2, randomLevelData: null, showSolution: false, startTime: Date.now() });
+
+      // === 網格與畫布尺寸計算提前至此 ===
+      const cLevel = randomLevelData || { islands: [], description: "" };
+      const islandsToRender = cLevel.islands || [];
+      const maxGridX = Math.max.apply(Math, islandsToRender.map(function(i) { return i.x; }).concat([6])); 
+      const maxGridY = Math.max.apply(Math, islandsToRender.map(function(i) { return i.y; }).concat([6]));
+      const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
+      const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
+      
+      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
+      const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
+      const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
+      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
       useEffect(function() {
         const initAuth = async function() {
@@ -397,6 +411,7 @@
             if (lastPinchDist.current) {
               const delta = dist - lastPinchDist.current;
               setZoomLevel(function(prev) { return Math.min(Math.max(prev + delta * 0.005, 0.4), 3.5); });
+              setZoomModeIdx(0); // 取消自動縮放狀態
             }
             lastPinchDist.current = dist;
           } else if (e.touches.length === 1 && touchStartY !== null) {
@@ -405,7 +420,10 @@
           }
         };
         const handleTouchEnd = function() { lastPinchDist.current = null; touchStartY = null; };
-        const handleWheel = function(e) { if (Math.abs(e.deltaY) > 10 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); } };
+        const handleWheel = function(e) { 
+            if (Math.abs(e.deltaY) > 10 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); } 
+            if (e.ctrlKey) setZoomModeIdx(0); // 如果使用者用滾輪縮放，解除適應狀態
+        };
         
         el.addEventListener('touchstart', handleTouchStart, { passive: true });
         el.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -513,6 +531,12 @@
         syncState({ bridges: nextBridges });
       };
 
+      const toggleDraftMode = () => {
+        const nextMode = !isDraftMode;
+        setIsDraftMode(nextMode);
+        showToast(nextMode ? "✏️ 已切換成草稿模式" : "🖋️ 已切換成實線模式");
+      };
+
       const handleUndo = () => {
         if (history.length === 0 || isWon || engineRef.current !== 'none') return;
         const previousState = history[history.length - 1];
@@ -542,7 +566,7 @@
         const newRandomData = generateRandomHashi(targetLevelDef);
         const empty = generateEmptyBridges(newRandomData);
         syncState({ levelId: newLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
-        setIsWon(false); setHistory([]); setZoomLevel(1); setElapsedTime(0);
+        setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
       };
 
       const handleShowSolution = () => { syncState({ showSolution: true }); };
@@ -846,21 +870,36 @@
         } catch(e) { showToast("⚠️ 讀檔失敗！"); }
       };
 
-      const handleZoomIn = () => setZoomLevel(function(prev){return Math.min(prev + 0.3, 3.5);});
-      const handleZoomOut = () => setZoomLevel(function(prev){return Math.max(prev - 0.3, 0.4);});
-      const handleZoomReset = () => setZoomLevel(1);
+      const handleZoomIn = () => { setZoomLevel(function(prev){return Math.min(prev + 0.3, 3.5);}); setZoomModeIdx(0); };
+      const handleZoomOut = () => { setZoomLevel(function(prev){return Math.max(prev - 0.3, 0.4);}); setZoomModeIdx(0); };
 
-      const cLevel = randomLevelData || { islands: [], description: "" };
-      const islandsToRender = cLevel.islands || [];
-      const maxGridX = Math.max.apply(Math, islandsToRender.map(function(i) { return i.x; }).concat([6])); 
-      const maxGridY = Math.max.apply(Math, islandsToRender.map(function(i) { return i.y; }).concat([6]));
-      const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
-      const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
-      
-      const SCALE = 65; const PADDING = 85; const ISLAND_RADIUS = 22;
-      const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
-      const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
-      const hasSolution = cLevel.solution && cLevel.solution.length > 0;
+      const handleCycleZoom = () => {
+        const nextIdx = (zoomModeIdx + 1) % 4;
+        setZoomModeIdx(nextIdx);
+
+        const container = zoomContainerRef.current;
+        if (!container) return;
+
+        const paddingFactor = 0.95; 
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+
+        let newZoom = 1;
+        if (nextIdx === 0) {
+          newZoom = 1;
+          showToast("🔍 原始大小 (1x)");
+        } else if (nextIdx === 1) {
+          newZoom = (cw / svgW) * paddingFactor;
+          showToast("↔️ 適應螢幕寬度");
+        } else if (nextIdx === 2) {
+          newZoom = (ch / svgH) * paddingFactor;
+          showToast("↕️ 適應螢幕長度");
+        } else if (nextIdx === 3) {
+          newZoom = Math.min(cw / svgW, ch / svgH) * paddingFactor;
+          showToast("🔲 長寬自動適應");
+        }
+        setZoomLevel(Math.min(Math.max(newZoom, 0.2), 3.5));
+      };
 
       if (screen === 'home') {
         return (
@@ -906,8 +945,8 @@
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="border-t-4 md:border-t-0 md:border-r-4 border-dashed border-slate-300 pt-4 md:pt-0 md:pr-6 flex flex-col h-full">
-                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-[#2d2a26]">👑 建立對局大廳</h3>
-                   <p className="text-xs text-slate-500 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供其他玩家加入。</p>
+                   <h3 className="font-black text-lg mb-2 flex items-center gap-2 text-slate-800">👑 建立對局大廳</h3>
+                   <p className="text-xs text-slate-600 mb-4 font-bold leading-relaxed">擔任對局主機，系統會自動分派一組邀請碼供其他玩家加入。</p>
                    <div className="mt-auto">
                      {stableMode && <div className="text-xs font-black text-emerald-600 mb-2 animate-pulse">✓ 雲端模式準備就緒</div>}
                      <button onClick={initiateHostGame} disabled={isConnecting} className="w-full py-3 bg-blue-500 text-white border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase">
@@ -1009,10 +1048,12 @@
             <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
               
               <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto">
-                <button onClick={function(){setIsDraftMode(!isDraftMode);}} title={isDraftMode ? "切換為實線模式" : "切換為草稿模式"} className={`w-10 h-10 md:w-12 md:h-12 border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center ${isDraftMode ? 'bg-[#ffcc00] text-slate-800' : 'bg-white text-slate-400 hover:text-slate-800 hover:bg-slate-100'}`}>✏️</button>
+                <button onClick={toggleDraftMode} title={isDraftMode ? "切換為實線模式" : "切換為草稿模式"} className={`w-10 h-10 md:w-12 md:h-12 border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center ${isDraftMode ? 'bg-[#ffcc00] text-slate-800' : 'bg-white text-slate-400 hover:text-slate-800 hover:bg-slate-100'}`}>✏️</button>
                 <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">＋</button>
                 <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">－</button>
-                <button onClick={handleZoomReset} title="重置比例" className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 border-2 border-slate-800 rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">1x</button>
+                <button onClick={handleCycleZoom} title="循環切換縮放模式" className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 border-2 border-slate-800 rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">
+                  {zoomModeIdx === 0 ? '1x' : zoomModeIdx === 1 ? '↔️' : zoomModeIdx === 2 ? '↕️' : '🔲'}
+                </button>
               </div>
 
               <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative">
