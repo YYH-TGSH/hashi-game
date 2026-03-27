@@ -1668,9 +1668,9 @@
                       if (totalLines === 0) return (
                         <g key={b.id} onClick={() => handleBridgeClick(b.id)} className={bridgeGroupClass}>
                            {b.type === 'h' ? (
-                              <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className={bridgeRectClass} />
+                              <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 13} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={26} className={bridgeRectClass} />
                             ) : (
-                              <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
+                              <rect x={x1 - 13} y={Math.min(y1, y2) + ISLAND_RADIUS} width={26} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
                             )}
                         </g>
                       );
@@ -1694,9 +1694,9 @@
                       return (
                         <g key={b.id} onClick={() => handleBridgeClick(b.id)} className={bridgeGroupClass}>
                           {b.type === 'h' ? (
-                            <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className={bridgeRectClass} />
+                            <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 13} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={26} className={bridgeRectClass} />
                           ) : (
-                            <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
+                            <rect x={x1 - 13} y={Math.min(y1, y2) + ISLAND_RADIUS} width={26} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
                           )}
                           {linesToDraw.map((lineObj, lIdx) => {
                               const isDraft = lineObj.isDraft;
