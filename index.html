@@ -71,6 +71,17 @@
       0% { transform: scale(0.1); opacity: 0.8; stroke-width: 6px; }
       100% { transform: scale(3); opacity: 0; stroke-width: 2px; }
     }
+    @keyframes dotAnim {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+      100% { content: ''; }
+    }
+    .animate-loading-dots::after {
+      content: '';
+      animation: dotAnim 1.5s infinite;
+    }
     .custom-scrollbar::-webkit-scrollbar { width: 12px; height: 12px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-left: 2px solid #1e293b; border-top: 2px solid #1e293b; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border: 2px solid #1e293b; border-radius: 6px; }
@@ -126,156 +137,198 @@
 
     // === 關卡設定 ===
     const LEVELS = [
-      { id: 1, name: "🎲 隨機 (5x5 幼幼班)", width: 5, height: 5, description: "最簡單的暖身關卡，試著連連看。" },
-      { id: 2, name: "🎲 隨機 (10x10 標準)", width: 10, height: 10, description: "標準難度，注意所有島嶼都要連通喔！" },
-      { id: 3, name: "🎲 隨機 (10x20 手機直式)", width: 10, height: 20, description: "適合手機滑動的長條形地圖。" },
-      { id: 4, name: "🎲 隨機 (15x15 魔王)", width: 15, height: 15, description: "極具挑戰性！找尋角落的大數字作為突破口。" },
-      { id: 5, name: "🎲 隨機 (20x20 史詩)", width: 20, height: 20, description: "超大地圖，請善用右下角的畫面縮放功能。" }
+      { id: 1, name: "5x5 幼幼班", width: 5, height: 5, description: "最簡單的暖身關卡，試著連連看。" },
+      { id: 2, name: "10x10 標準", width: 10, height: 10, description: "標準難度，注意所有島嶼都要連通喔！" },
+      { id: 3, name: "10x20 手機直式", width: 10, height: 20, description: "適合手機滑動的長條形地圖。" },
+      { id: 4, name: "15x15 魔王", width: 15, height: 15, description: "極具挑戰性！找尋角落的大數字作為突破口。" },
+      { id: 5, name: "20x20 史詩", width: 20, height: 20, description: "超大地圖，請善用右下角的畫面縮放功能。" },
+      { id: 'custom', name: "⚙️ 自訂尺寸", width: 30, height: 30, description: "自訂地圖長寬，適合多人合作挑戰！" }
     ];
 
     // ==========================================
-    // 智慧逆向生成演算法 (超高密度版)
+    // 全新高密度智慧演算法 (網格掃描 + Kruskal生成樹)
     // ==========================================
     function generateRandomHashi(levelDef) {
-      const width = levelDef.width, height = levelDef.height;
-      let islands = [], topologyBridges = [];
-      let grid = Array(height).fill(null).map(() => Array(width).fill(null));
-      let islandId = 1;
-      
-      let startX = Math.floor(width / 2), startY = Math.floor(height / 2);
-      let firstIsland = { id: islandId++, x: startX, y: startY, req: 0 };
-      islands.push(firstIsland);
-      grid[startY][startX] = { type: 'island', island: firstIsland };
-      
-      const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; 
-      const area = width * height;
-      
-      let targetIslandCount = Math.floor(area * 0.35);
-      let maxAttempts = area * 50;
-      let attempts = 0;
-      
-      while (islands.length < targetIslandCount && attempts < maxAttempts) {
-        attempts++;
-        let source = islands[Math.floor(Math.random() * islands.length)];
-        let dir = dirs[Math.floor(Math.random() * dirs.length)];
-        let dist = 1;
-        let hitType = null, hitObj = null;
+      const W = levelDef.width, H = levelDef.height;
+      let grid = Array(H).fill(null).map(() => Array(W).fill(null));
 
-        while (true) {
-            let nx = source.x + dir[0] * dist;
-            let ny = source.y + dir[1] * dist;
-            if (nx < 0 || nx >= width || ny < 0 || ny >= height) { hitType = 'wall'; break; }
-            if (grid[ny][nx]) {
-                hitType = grid[ny][nx].type;
-                if (hitType === 'island') hitObj = grid[ny][nx].island;
-                break;
-            }
-            dist++;
-        }
+      // 1. 隨機放置島嶼 (高密度，且保證無正交相鄰，避免 2x2 填滿)
+      for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+              let hasNeighbor = false;
+              if (x > 0 && grid[y][x-1]) hasNeighbor = true;
+              if (y > 0 && grid[y-1][x]) hasNeighbor = true;
+              if (x < W-1 && grid[y][x+1]) hasNeighbor = true;
+              if (y < H-1 && grid[y+1][x]) hasNeighbor = true;
 
-        if (hitType === 'bridge') continue;
-
-        let target_d = 0;
-        let targetIslandObj = null;
-
-        if (hitType === 'island') {
-            if (dist < 2) continue; 
-            if (Math.random() < 0.8) { target_d = dist; targetIslandObj = hitObj; } 
-            else continue;
-        } else if (hitType === 'wall') {
-            if (dist < 3) continue; 
-            let max_possible = dist - 1;
-            let pool = [];
-            for (let i = 2; i <= max_possible; i++) { 
-              pool.push(i); 
-              if (i <= 3) { pool.push(i); pool.push(i); } 
-            }
-            target_d = pool[Math.floor(Math.random() * pool.length)];
-        }
-
-        if (!target_d) continue;
-
-        let newX = source.x + dir[0] * target_d;
-        let newY = source.y + dir[1] * target_d;
-
-        if (!targetIslandObj) {
-            let tooClose = false;
-            const orthoDirs = [[0,1], [1,0], [0,-1], [-1,0]];
-            for (let od of orthoDirs) {
-                let cx = newX + od[0], cy = newY + od[1];
-                if (cx >= 0 && cx < width && cy >= 0 && cy < height) {
-                    if (grid[cy][cx] && grid[cy][cx].type === 'island') tooClose = true;
-                }
-            }
-            if (!tooClose) {
-                const diagDirs = [[1,1], [1,-1], [-1,1], [-1,-1]];
-                for (let dd of diagDirs) {
-                    let cx = newX + dd[0], cy = newY + dd[1];
-                    if (cx >= 0 && cx < width && cy >= 0 && cy < height) {
-                        if (grid[cy][cx] && grid[cy][cx].type === 'island' && Math.random() < 0.2) tooClose = true;
-                    }
-                }
-            }
-            if (tooClose) continue;
-
-            targetIslandObj = { id: islandId++, x: newX, y: newY, req: 0 };
-            islands.push(targetIslandObj);
-            grid[newY][newX] = { type: 'island', island: targetIslandObj };
-        }
-
-        let existingBridge = topologyBridges.find(b => (b.from === source.id && b.to === targetIslandObj.id) || (b.to === source.id && b.from === targetIslandObj.id));
-
-        if (!existingBridge) {
-            let newBridge = { from: source.id, to: targetIslandObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 };
-            topologyBridges.push(newBridge);
-            for (let j = 1; j < target_d; j++) grid[source.y + dir[1] * j][source.x + dir[0] * j] = { type: 'bridge' };
-        }
+              if (!hasNeighbor) {
+                  if (Math.random() < 0.45) grid[y][x] = true;
+              }
+          }
       }
 
-      for (let i = 0; i < islands.length; i++) {
-          let source = islands[i];
-          for (let d = 0; d < dirs.length; d++) {
-              let dir = dirs[d];
-              let dist = 1;
-              let hitObj = null;
-              while (true) {
-                  let nx = source.x + dir[0] * dist;
-                  let ny = source.y + dir[1] * dist;
-                  if (nx < 0 || nx >= width || ny < 0 || ny >= height) break;
-                  if (grid[ny][nx]) {
-                      if (grid[ny][nx].type === 'island') hitObj = grid[ny][nx].island;
-                      break; 
+      // 2. 強制填補 3x3 空白區域 (確保不出現 3x3 完全無島嶼)
+      for (let y = 0; y <= H - 3; y++) {
+          for (let x = 0; x <= W - 3; x++) {
+              let hasIsland = false;
+              for (let dy = 0; dy < 3; dy++) {
+                  for (let dx = 0; dx < 3; dx++) {
+                      if (grid[y+dy][x+dx]) hasIsland = true;
                   }
-                  dist++;
               }
-              if (hitObj && dist >= 2) {
-                  let existingBridge = topologyBridges.find(b => (b.from === source.id && b.to === hitObj.id) || (b.to === source.id && b.from === hitObj.id));
-                  if (!existingBridge && Math.random() < 0.85) {
-                      topologyBridges.push({ from: source.id, to: hitObj.id, type: dir[0] !== 0 ? 'h' : 'v', count: 0 });
-                      for (let j = 1; j < dist; j++) grid[source.y + dir[1] * j][source.x + dir[0] * j] = { type: 'bridge' };
+              if (!hasIsland) {
+                  let emptyCells = [];
+                  for (let dy = 0; dy < 3; dy++) {
+                      for (let dx = 0; dx < 3; dx++) {
+                          let cy = y + dy, cx = x + dx;
+                          let hasNeighbor = false;
+                          if (cx > 0 && grid[cy][cx-1]) hasNeighbor = true;
+                          if (cy > 0 && grid[cy-1][cx]) hasNeighbor = true;
+                          if (cx < W-1 && grid[cy][cx+1]) hasNeighbor = true;
+                          if (cy < H-1 && grid[cy+1][cx]) hasNeighbor = true;
+                          if (!hasNeighbor) emptyCells.push({x: cx, y: cy});
+                      }
+                  }
+                  if (emptyCells.length > 0) {
+                      let pick = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                      grid[pick.y][pick.x] = true;
                   }
               }
           }
       }
 
-      let solutionBridges = [];
-      topologyBridges.forEach(b => {
-          b.count = Math.random() < 0.5 ? 1 : 2; 
-          solutionBridges.push(b);
+      // 3. 建立島嶼物件
+      let islands = [];
+      let islandId = 1;
+      for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+              if (grid[y][x]) {
+                  let isl = { id: islandId++, x: x, y: y, req: 0 };
+                  islands.push(isl);
+                  grid[y][x] = isl;
+              }
+          }
+      }
+
+      // 4. 尋找所有可能的橋樑路徑 (視線內無阻擋)
+      let potentialBridges = [];
+      for (let i = 0; i < islands.length; i++) {
+          let island = islands[i];
+          // 向右找
+          for (let x = island.x + 1; x < W; x++) {
+              if (grid[island.y][x]) {
+                  potentialBridges.push({ from: island.id, to: grid[island.y][x].id, type: 'h', minX: island.x, maxX: x, y: island.y, len: x - island.x });
+                  break;
+              }
+          }
+          // 向下找
+          for (let y = island.y + 1; y < H; y++) {
+              if (grid[y][island.x]) {
+                  potentialBridges.push({ from: island.id, to: grid[y][island.x].id, type: 'v', minY: island.y, maxY: y, x: island.x, len: y - island.y });
+                  break;
+              }
+          }
+      }
+
+      // 依長度排序，優先連接近的島嶼，減少長橋交叉，讓畫面更順眼
+      potentialBridges.sort((a, b) => a.len - b.len + (Math.random() - 0.5));
+
+      // 5. Kruskal's 演算法建立連通圖 (避免任何交叉)
+      let uf = new Map();
+      islands.forEach(i => uf.set(i.id, i.id));
+      function find(i) { if (uf.get(i) === i) return i; let root = find(uf.get(i)); uf.set(i, root); return root; }
+      function union(i, j) { let rootI = find(i), rootJ = find(j); if (rootI !== rootJ) { uf.set(rootI, rootJ); return true; } return false; }
+
+      let acceptedBridges = [];
+
+      function doesIntersect(b) {
+          for (let i = 0; i < acceptedBridges.length; i++) {
+              let a = acceptedBridges[i];
+              if (a.type === 'h' && b.type === 'v') {
+                  if (b.x > a.minX && b.x < a.maxX && a.y > b.minY && a.y < b.maxY) return true;
+              } else if (a.type === 'v' && b.type === 'h') {
+                  if (a.x > b.minX && a.x < b.maxX && b.y > a.minY && b.y < a.maxY) return true;
+              }
+          }
+          return false;
+      }
+
+      let rejectedBridges = [];
+      for (let i=0; i<potentialBridges.length; i++) {
+          let b = potentialBridges[i];
+          if (doesIntersect(b)) continue;
+          if (union(b.from, b.to)) {
+              acceptedBridges.push(b);
+          } else {
+              rejectedBridges.push(b);
+          }
+      }
+
+      // 增加額外的橋樑產生迴圈 (加入環狀路徑，讓解題變化更多)
+      for (let i=0; i<rejectedBridges.length; i++) {
+          let b = rejectedBridges[i];
+          if (!doesIntersect(b) && Math.random() < 0.4) {
+              acceptedBridges.push(b);
+          }
+      }
+
+      // 6. 分配橋樑數量 (1 或 2) 並計算島嶼需求數字
+      let islandDegree = {};
+      islands.forEach(i => islandDegree[i.id] = 0);
+      
+      acceptedBridges.forEach(b => {
+          b.count = Math.random() < 0.5 ? 1 : 2;
+          islandDegree[b.from] += b.count;
+          islandDegree[b.to] += b.count;
       });
 
-      solutionBridges.forEach(b => {
-        let fromNode = islands.find(i => i.id === b.from);
-        let toNode = islands.find(i => i.id === b.to);
-        if (fromNode) fromNode.req += b.count;
-        if (toNode) toNode.req += b.count;
-      });
+      islands = islands.filter(i => islandDegree[i.id] > 0);
+      islands.forEach(i => i.req = islandDegree[i.id]);
 
-      islands = islands.filter(i => i.req > 0);
+      // 7. 確保全圖單一連通 (保留最大連通塊，刪除因交叉限制而被孤立的碎塊)
+      if (islands.length > 0) {
+          let adj = {};
+          islands.forEach(i => adj[i.id] = []);
+          acceptedBridges.forEach(b => {
+              if (adj[b.from] && adj[b.to]) {
+                  adj[b.from].push(b.to);
+                  adj[b.to].push(b.from);
+              }
+          });
+
+          let visited = new Set();
+          let components = [];
+          for (let i=0; i<islands.length; i++) {
+              let island = islands[i];
+              if (!visited.has(island.id)) {
+                  let comp = [];
+                  let q = [island.id];
+                  visited.add(island.id);
+                  while(q.length > 0) {
+                      let curr = q.shift();
+                      comp.push(curr);
+                      for (let j=0; j<adj[curr].length; j++) {
+                          let n = adj[curr][j];
+                          if (!visited.has(n)) {
+                              visited.add(n);
+                              q.push(n);
+                          }
+                      }
+                  }
+                  components.push(comp);
+              }
+          }
+
+          components.sort((a, b) => b.length - a.length);
+          let largestCompSet = new Set(components[0]);
+
+          islands = islands.filter(i => largestCompSet.has(i.id));
+          acceptedBridges = acceptedBridges.filter(b => largestCompSet.has(b.from) && largestCompSet.has(b.to));
+      }
 
       return { 
-        id: levelDef.id, name: levelDef.name, width: width, height: height, 
-        description: levelDef.description, isRandom: true, islands: islands, solution: solutionBridges 
+        id: levelDef.id, name: levelDef.name, width: W, height: H, 
+        description: levelDef.description, isRandom: true, islands: islands, solution: acceptedBridges 
       };
     }
 
@@ -335,12 +388,19 @@
       const [zoomLevel, setZoomLevel] = useState(1);
       const [showSolution, setShowSolution] = useState(false);
       const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+      
+      // === 存檔與自訂尺寸狀態 ===
       const [showSaveModal, setShowSaveModal] = useState(false);
       const [saveCode, setSaveCode] = useState("");
       
+      const [showCustomModal, setShowCustomModal] = useState(false);
+      const [tempWidth, setTempWidth] = useState(30);
+      const [tempHeight, setTempHeight] = useState(30);
+
       const [isDraftMode, setIsDraftMode] = useState(false);
       const [zoomModeIdx, setZoomModeIdx] = useState(0); 
       const [isClosingModal, setIsClosingModal] = useState(false);
+      const [isGenerating, setIsGenerating] = useState(false);
 
       // 色票選擇器狀態：紀錄目前正在修改哪個玩家的顏色
       const [colorPickerTarget, setColorPickerTarget] = useState(null);
@@ -378,8 +438,8 @@
       // === 網格與畫布尺寸計算提前至此 ===
       const cLevel = randomLevelData || { islands: [], description: "" };
       const islandsToRender = cLevel.islands || [];
-      const maxGridX = Math.max.apply(Math, islandsToRender.map(i => i.x).concat([6])); 
-      const maxGridY = Math.max.apply(Math, islandsToRender.map(i => i.y).concat([6]));
+      const maxGridX = islandsToRender.length > 0 ? Math.max.apply(Math, islandsToRender.map(i => i.x).concat([6])) : 6; 
+      const maxGridY = islandsToRender.length > 0 ? Math.max.apply(Math, islandsToRender.map(i => i.y).concat([6])) : 6;
       const gridWidth = (cLevel.width) ? cLevel.width : (maxGridX + 1);
       const gridHeight = (cLevel.height) ? cLevel.height : (maxGridY + 1);
       
@@ -626,21 +686,62 @@
       };
 
       const handleRegenerateRandom = () => {
-        const targetLevelDef = LEVELS.find(l => l.id === currentLevelId) || LEVELS[1];
-        const newRandomData = generateRandomHashi(targetLevelDef);
-        const empty = generateEmptyBridges(newRandomData);
-        syncState({ levelId: currentLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
-        setIsWon(false); setHistory([]); setElapsedTime(0); setHideVictoryModal(false);
+        setIsGenerating(true);
+        setTimeout(() => {
+            let targetLevelDef;
+            if (currentLevelId === 'custom') {
+               targetLevelDef = { id: 'custom', name: `⚙️ 自訂 (${randomLevelData.width}x${randomLevelData.height})`, width: randomLevelData.width, height: randomLevelData.height, description: "玩家自訂尺寸的大型地圖！" };
+            } else {
+               targetLevelDef = LEVELS.find(l => l.id === currentLevelId) || LEVELS[1];
+            }
+            const newRandomData = generateRandomHashi(targetLevelDef);
+            const empty = generateEmptyBridges(newRandomData);
+            syncState({ levelId: currentLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+            setIsWon(false); setHistory([]); setElapsedTime(0); setHideVictoryModal(false);
+            setIsGenerating(false);
+        }, 100);
       };
 
       const handleLevelChange = (newLevelId) => {
         if (engineRef.current !== 'none' && !isHostRef.current) return;
-        const targetLevelDef = LEVELS.find(l => l.id === newLevelId);
-        if(!targetLevelDef) return;
-        const newRandomData = generateRandomHashi(targetLevelDef);
-        const empty = generateEmptyBridges(newRandomData);
-        syncState({ levelId: newLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
-        setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
+        
+        if (newLevelId === 'custom') {
+            setShowCustomModal(true);
+            return; 
+        }
+
+        setIsGenerating(true);
+        setTimeout(() => {
+            const targetLevelDef = LEVELS.find(l => l.id === newLevelId);
+            if(!targetLevelDef) {
+                setIsGenerating(false);
+                return;
+            }
+            const newRandomData = generateRandomHashi(targetLevelDef);
+            const empty = generateEmptyBridges(newRandomData);
+            syncState({ levelId: newLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+            setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
+            setIsGenerating(false);
+        }, 100);
+      };
+
+      const handleCustomGenerate = () => {
+          let w = Math.max(5, Math.min(100, tempWidth));
+          let h = Math.max(5, Math.min(100, tempHeight));
+          setTempWidth(w);
+          setTempHeight(h);
+          setShowCustomModal(false);
+          
+          setIsGenerating(true);
+          setTimeout(() => {
+              const customLevelDef = { id: 'custom', name: `⚙️ 自訂 (${w}x${h})`, width: w, height: h, description: "玩家自訂尺寸的大型地圖！" };
+              const newRandomData = generateRandomHashi(customLevelDef);
+              const empty = generateEmptyBridges(newRandomData);
+              
+              syncState({ levelId: 'custom', randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+              setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
+              setIsGenerating(false);
+          }, 100);
       };
 
       const handleShowSolution = () => { syncState({ showSolution: true }); };
@@ -940,13 +1041,20 @@
         try {
           if (!saveCode.trim()) return showToast("⚠️ 請貼上代碼");
           const data = JSON.parse(decodeURIComponent(atob(saveCode.trim())));
-          const baseLevel = LEVELS.find(l => l.id === data.lid);
-          if (!baseLevel) return showToast("⚠️ 無效的代碼");
           
-          const newRandom = data.r;
+          let baseLevel, newRandom;
+          if (data.lid === 'custom') {
+              baseLevel = { id: 'custom', name: `⚙️ 自訂尺寸`, islands: (data.r && data.r.islands) ? data.r.islands : [] };
+              newRandom = data.r;
+          } else {
+              baseLevel = LEVELS.find(l => l.id === data.lid);
+              if (!baseLevel) return showToast("⚠️ 無效的代碼");
+              newRandom = data.r;
+          }
+
           const islandsToUse = newRandom && newRandom.islands ? newRandom.islands : baseLevel.islands;
-          
           const emptyBridges = generateEmptyBridges({ islands: islandsToUse });
+          
           data.b.forEach(savedBr => { let tb = emptyBridges.find(eb => eb.id === savedBr.i); if (tb) { tb.count = savedBr.c || 0; tb.draftCount = savedBr.d || 0; tb.owner = savedBr.o; } });
           setCurrentLevelId(data.lid);
           syncState({ randomLevelData: newRandom, bridges: emptyBridges, showSolution: false });
@@ -1004,7 +1112,7 @@
                  </div>
               </div>
             </div>
-            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.1)</div>
+            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.2)</div>
           </div>
         );
       }
@@ -1090,8 +1198,17 @@
                </div>
 
                <div className="flex flex-wrap gap-1.5 items-center justify-between w-full">
-                  <select disabled={isMultiplayer && !isHostRef.current} value={currentLevelId} onChange={(e) => handleLevelChange(Number(e.target.value))} className="px-1 py-1 md:px-2 md:py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-sm outline-none shadow-[2px_2px_0px_#2d2a26] w-auto cursor-pointer max-w-[130px] sm:max-w-none truncate disabled:opacity-60 disabled:cursor-not-allowed">
-                     {LEVELS.map(level => <option key={level.id} value={level.id}>{level.name}</option>)}
+                  <select disabled={isMultiplayer && !isHostRef.current} value={currentLevelId} onChange={(e) => {
+                      const val = e.target.value;
+                      handleLevelChange(val === 'custom' ? 'custom' : Number(val));
+                  }} className="px-1 py-1 md:px-2 md:py-1.5 rounded-md border-2 border-[#2d2a26] font-bold bg-white text-[#2d2a26] text-xs md:text-sm outline-none shadow-[2px_2px_0px_#2d2a26] w-auto cursor-pointer max-w-[150px] sm:max-w-none truncate disabled:opacity-60 disabled:cursor-not-allowed">
+                     {LEVELS.map(level => {
+                         const isCustomActive = (level.id === 'custom' && currentLevelId === 'custom' && randomLevelData);
+                         const displayName = isCustomActive 
+                             ? `⚙️ 自訂 (${randomLevelData.width}x${randomLevelData.height})` 
+                             : level.name;
+                         return <option key={level.id} value={level.id}>{displayName}</option>;
+                     })}
                   </select>
                   
                   <div className="flex gap-1 md:gap-2 flex-wrap items-center ml-auto">
@@ -1171,6 +1288,14 @@
 
             <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
               
+              {isGenerating && (
+                <div className="absolute inset-0 z-[40] flex items-center justify-center pointer-events-none">
+                  <div className="text-slate-800/30 font-black text-3xl md:text-5xl tracking-widest flex items-center select-none animate-pulse">
+                    地圖產生中<span className="animate-loading-dots inline-block w-[1.5em] text-left"></span>
+                  </div>
+                </div>
+              )}
+
               <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto">
                 <button onClick={toggleDraftMode} title={isDraftMode ? "切換為實線模式" : "切換為草稿模式"} className={`w-10 h-10 md:w-12 md:h-12 border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center ${isDraftMode ? 'bg-[#ffcc00] text-slate-800' : 'bg-white text-slate-400 hover:text-slate-800 hover:bg-slate-100'}`}>✏️</button>
                 <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">＋</button>
@@ -1367,6 +1492,39 @@
                 <div className="flex gap-4">
                   <button onClick={() => setShowSaveModal(false)} className="flex-1 py-3 bg-white border-4 border-slate-800 rounded-xl font-black text-slate-800 shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all">關閉</button>
                   <button onClick={handleLoadCode} className="flex-1 py-3 bg-emerald-400 text-slate-900 border-4 border-slate-800 rounded-xl font-black shadow-[4px_4px_0px_rgba(30,41,59,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all">載入代碼</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 自訂地圖彈窗 */}
+          {showCustomModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+              <div className="bg-[#fffdfa] border-[4px] border-[#2d2a26] rounded-2xl p-6 shadow-[10px_10px_0px_rgba(30,41,59,1)] w-full max-w-sm animate-popUpCenter">
+                <div className="flex justify-between items-center mb-4 border-b-4 border-slate-800 pb-2">
+                  <h2 className="text-xl font-black text-slate-800">⚙️ 自訂地圖尺寸</h2>
+                  <button onClick={() => {
+                      setShowCustomModal(false);
+                      setCurrentLevelId(stateRef.current.levelId); 
+                  }} className="text-slate-400 hover:text-slate-800 text-2xl font-black">✕</button>
+                </div>
+                <p className="text-xs font-bold text-slate-500 mb-4">輸入專屬長寬（5 ~ 100），生成超大型合作地圖：</p>
+                <div className="flex flex-col gap-4 mb-6">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-800 mb-1">寬度 (橫向島嶼數):</label>
+                    <input type="number" min="5" max="100" value={tempWidth} onChange={(e) => setTempWidth(parseInt(e.target.value) || 5)} className="w-full border-2 border-slate-800 rounded-md p-2 font-bold focus:ring-2 ring-[#ffcc00] outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-800 mb-1">長度 (直向島嶼數):</label>
+                    <input type="number" min="5" max="100" value={tempHeight} onChange={(e) => setTempHeight(parseInt(e.target.value) || 5)} className="w-full border-2 border-slate-800 rounded-md p-2 font-bold focus:ring-2 ring-[#ffcc00] outline-none" />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => {
+                      setShowCustomModal(false);
+                      setCurrentLevelId(stateRef.current.levelId);
+                  }} className="flex-1 py-2 bg-slate-200 border-2 border-slate-800 rounded-xl font-black text-slate-800 shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-slate-300 active:translate-y-1 active:shadow-none transition-all">取消</button>
+                  <button onClick={handleCustomGenerate} className="flex-1 py-2 bg-[#ffcc00] border-2 border-slate-800 rounded-xl font-black text-slate-900 shadow-[2px_2px_0px_rgba(30,41,59,1)] hover:bg-[#e6b800] active:translate-y-1 active:shadow-none transition-all">產生</button>
                 </div>
               </div>
             </div>
