@@ -445,6 +445,10 @@
       const [isClosingModal, setIsClosingModal] = useState(false);
       const [isGenerating, setIsGenerating] = useState(false);
 
+      // 追蹤目前滑鼠懸停的橋樑與島嶼 (用於發光提示)
+      const [hoveredBridgeId, setHoveredBridgeId] = useState(null);
+      const [hoveredIslandId, setHoveredIslandId] = useState(null);
+
       // 色票選擇器狀態：紀錄目前正在修改哪個玩家的顏色
       const [colorPickerTarget, setColorPickerTarget] = useState(null);
       // 彩蛋顏色解鎖序列追蹤
@@ -765,6 +769,93 @@
         }
       };
 
+      const islandCurrentCounts = useMemo(function() {
+        const counts = {};
+        const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
+        islands.forEach(i => { counts[i.id] = { total: 0, real: 0 }; });
+        (bridges || []).forEach(b => {
+          if (counts[b.from] !== undefined) {
+             counts[b.from].total += b.count + (b.draftCount || 0);
+             counts[b.from].real += b.count;
+          }
+          if (counts[b.to] !== undefined) {
+             counts[b.to].total += b.count + (b.draftCount || 0);
+             counts[b.to].real += b.count;
+          }
+        });
+        return counts;
+      }, [bridges, randomLevelData]);
+
+      // === 全新核心：交叉防呆判定預先計算 ===
+      const crossedBridgeIds = useMemo(() => {
+          const crossed = new Set();
+          const islMap = {};
+          const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
+          islands.forEach(i => { islMap[i.id] = i; });
+
+          // 只找已經畫上實線或草稿的「現有橋樑」
+          const activeBridges = bridges.filter(b => (b.count + (b.draftCount || 0)) > 0);
+
+          bridges.forEach(target => {
+              // 如果它已經被蓋好了，就不需要被標記為「阻擋」
+              if ((target.count + (target.draftCount || 0)) > 0) return;
+              
+              const tFrom = islMap[target.from];
+              const tTo = islMap[target.to];
+              if (!tFrom || !tTo) return;
+
+              let isCross = false;
+              if (target.type === 'h') {
+                  const y = tFrom.y;
+                  const minX = Math.min(tFrom.x, tTo.x);
+                  const maxX = Math.max(tFrom.x, tTo.x);
+                  for (let b of activeBridges) {
+                      if (b.type === 'v') {
+                          const bFrom = islMap[b.from], bTo = islMap[b.to];
+                          if (bFrom && bTo && bFrom.x > minX && bFrom.x < maxX && y > Math.min(bFrom.y, bTo.y) && y < Math.max(bFrom.y, bTo.y)) {
+                              isCross = true; break;
+                          }
+                      }
+                  }
+              } else {
+                  const x = tFrom.x;
+                  const minY = Math.min(tFrom.y, tTo.y);
+                  const maxY = Math.max(tFrom.y, tTo.y);
+                  for (let b of activeBridges) {
+                      if (b.type === 'h') {
+                          const bFrom = islMap[b.from], bTo = islMap[b.to];
+                          if (bFrom && bTo && bFrom.y > minY && bFrom.y < maxY && x > Math.min(bFrom.x, bTo.x) && x < Math.max(bFrom.x, bTo.x)) {
+                              isCross = true; break;
+                          }
+                      }
+                  }
+              }
+              // 如果這條還沒蓋的橋，路線上有其他橋擋著，就記下來
+              if (isCross) crossed.add(target.id);
+          });
+          return crossed;
+      }, [bridges, randomLevelData]);
+
+      // 優化效能：預先計算哪些島嶼需要發光，避免在幾千座島的迴圈中重複尋找
+      const highlightedIslandIds = useMemo(() => {
+          const ids = new Set();
+          if (hoveredIslandId) ids.add(hoveredIslandId);
+          if (hoveredBridgeId) {
+              const hb = bridges.find(b => b.id === hoveredBridgeId);
+              if (hb) {
+                  ids.add(hb.from);
+                  ids.add(hb.to);
+              }
+          }
+          return ids;
+      }, [hoveredIslandId, hoveredBridgeId, bridges]);
+
+      // 優化效能：預先撈出當前被 Hover 島嶼的所有可能連線方向，供繪製提示點使用
+      const activeHints = useMemo(() => {
+          if (!hoveredIslandId || interactionMode >= 2) return [];
+          return bridges.filter(b => b.from === hoveredIslandId || b.to === hoveredIslandId);
+      }, [hoveredIslandId, interactionMode, bridges]);
+
       // 橋樑點擊與防呆
       const handleBridgeClick = (bId) => {
         if (isWon || interactionMode >= 2) return;
@@ -772,34 +863,11 @@
         const target = cur.find(b => b.id === bId);
         if (!target) return;
         
+        // 防呆：如果想蓋橋，但它已經被判定為「被阻擋」了，就攔截下來
         if (target.count + (target.draftCount || 0) === 0) {
-          const islandsMap = {};
-          const cLevel = randomLevelData || { islands: [] };
-          (cLevel.islands || []).forEach(i => { islandsMap[i.id] = i; });
-          const tFrom = islandsMap[target.from], tTo = islandsMap[target.to];
-          let isCross = false;
-          if (tFrom && tTo) {
-            if (target.type === 'h') {
-              const y = tFrom.y, minX = Math.min(tFrom.x, tTo.x), maxX = Math.max(tFrom.x, tTo.x);
-              for (let i=0; i<cur.length; i++) {
-                let b = cur[i];
-                if ((b.count + (b.draftCount || 0)) > 0 && b.type === 'v') {
-                  const bFrom = islandsMap[b.from], bTo = islandsMap[b.to];
-                  if (bFrom && bTo && bFrom.x > minX && bFrom.x < maxX && y > Math.min(bFrom.y, bTo.y) && y < Math.max(bFrom.y, bTo.y)) isCross = true;
-                }
-              }
-            } else {
-              const x = tFrom.x, minY = Math.min(tFrom.y, tTo.y), maxY = Math.max(tFrom.y, tTo.y);
-              for (let i=0; i<cur.length; i++) {
-                let b = cur[i];
-                if ((b.count + (b.draftCount || 0)) > 0 && b.type === 'h') {
-                  const bFrom = islandsMap[b.from], bTo = islandsMap[b.to];
-                  if (bFrom && bTo && bFrom.y > minY && bFrom.y < maxY && x > Math.min(bFrom.x, bTo.x) && x < Math.max(bFrom.x, bTo.x)) isCross = true;
-                }
-              }
-            }
+          if (crossedBridgeIds.has(bId)) {
+             return showToast("🚫 橋樑不能交叉喔！請先移除阻擋的橋。");
           }
-          if (isCross) return showToast("🚫 橋樑不能交叉喔！請先移除阻擋的橋。");
         }
 
         if (engineRef.current === 'none') setHistory(past => [...past, cur]);
@@ -830,6 +898,8 @@
         });
         syncState({ bridges: nextBridges });
       };
+
+      const handleShowSolution = () => { syncState({ showSolution: true }); };
 
       const toggleInteractionMode = () => {
         const maxModes = engineRef.current === 'peerjs' ? 3 : 2;
@@ -913,8 +983,6 @@
               setIsGenerating(false);
           }, 100);
       };
-
-      const handleShowSolution = () => { syncState({ showSolution: true }); };
 
       const closeVictoryModal = () => {
         setIsClosingModal(true);
@@ -1161,23 +1229,6 @@
         }
       };
 
-      const islandCurrentCounts = useMemo(function() {
-        const counts = {};
-        const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
-        islands.forEach(i => { counts[i.id] = { total: 0, real: 0 }; });
-        (bridges || []).forEach(b => {
-          if (counts[b.from] !== undefined) {
-             counts[b.from].total += b.count + (b.draftCount || 0);
-             counts[b.from].real += b.count;
-          }
-          if (counts[b.to] !== undefined) {
-             counts[b.to].total += b.count + (b.draftCount || 0);
-             counts[b.to].real += b.count;
-          }
-        });
-        return counts;
-      }, [bridges, randomLevelData]);
-
       useEffect(function() {
         const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
         if (islands.length === 0) { if (isWon) setIsWon(false); return; }
@@ -1300,7 +1351,7 @@
                  </div>
               </div>
             </div>
-            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.4.1)</div>
+            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.5)</div>
           </div>
         );
       }
@@ -1660,20 +1711,44 @@
                           lineOpacity = (b.owner === myId) ? 1 : 0.5; 
                       }
 
-                      // 在繪圖/橡皮擦模式下，關閉橋樑的滑鼠感應與黃色 Hover 效果
-                      const bridgeGroupClass = interactionMode >= 2 ? "pointer-events-none" : "cursor-pointer group";
-                      const bridgeRectClass = interactionMode >= 2 ? "fill-transparent" : "fill-transparent group-hover:fill-yellow-300/30 transition-colors";
+                      const isCrossed = crossedBridgeIds.has(b.id);
+                      const isIslandHovered = (hoveredIslandId === b.from || hoveredIslandId === b.to) && interactionMode < 2;
+
+                      // 在繪圖模式下或被阻擋時，關閉橋樑的滑鼠感應
+                      const bridgeGroupClass = interactionMode >= 2 || (isCrossed && totalLines === 0) ? "pointer-events-none" : "cursor-pointer group";
+                      // 只有未被阻擋且有實體時才顯示黃底，如果連動到島嶼發光則強制顯示黃底
+                      const bridgeRectClass = interactionMode >= 2 ? "fill-transparent" : `transition-colors duration-300 ${isIslandHovered ? 'fill-yellow-300/40' : 'fill-transparent group-hover:fill-yellow-300/40'}`;
                       const bridgeLineClass = `pointer-events-none ${isRainbow ? 'rainbow-stroke' : 'transition-colors duration-300'}`;
 
-                      if (totalLines === 0) return (
-                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className={bridgeGroupClass}>
-                           {b.type === 'h' ? (
-                              <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 13} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={26} className={bridgeRectClass} />
-                            ) : (
-                              <rect x={x1 - 13} y={Math.min(y1, y2) + ISLAND_RADIUS} width={26} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
-                            )}
-                        </g>
-                      );
+                      if (totalLines === 0) {
+                          if (isCrossed) {
+                              // 如果橋樑被阻擋，只在 Hover 島嶼時顯示「細細的斜虛線斷開提示」
+                              if (!isIslandHovered) return null;
+                              return (
+                                  <g key={b.id} className="pointer-events-none">
+                                      {b.type === 'h' ? (
+                                          <line x1={Math.min(x1, x2) + ISLAND_RADIUS} y1={y1} x2={Math.max(x1, x2) - ISLAND_RADIUS} y2={y2} stroke="#facc15" strokeWidth="12" strokeOpacity="0.6" strokeDasharray="15,10" strokeLinecap="round" />
+                                      ) : (
+                                          <line x1={x1} y1={Math.min(y1, y2) + ISLAND_RADIUS} x2={x2} y2={Math.max(y1, y2) - ISLAND_RADIUS} stroke="#facc15" strokeWidth="12" strokeOpacity="0.6" strokeDasharray="15,10" strokeLinecap="round" />
+                                      )}
+                                  </g>
+                              );
+                          }
+                          // 正常的透明底框 (可點擊)
+                          return (
+                            <g key={b.id} 
+                               onClick={() => handleBridgeClick(b.id)} 
+                               onMouseEnter={() => interactionMode < 2 && setHoveredBridgeId(b.id)}
+                               onMouseLeave={() => interactionMode < 2 && setHoveredBridgeId(null)}
+                               className={bridgeGroupClass}>
+                               {b.type === 'h' ? (
+                                  <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 13} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={26} className={bridgeRectClass} />
+                                ) : (
+                                  <rect x={x1 - 13} y={Math.min(y1, y2) + ISLAND_RADIUS} width={26} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
+                                )}
+                            </g>
+                          );
+                      }
 
                       let linesToDraw = [];
                       if (totalLines === 1) {
@@ -1692,7 +1767,11 @@
                       }
 
                       return (
-                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className={bridgeGroupClass}>
+                        <g key={b.id} 
+                           onClick={() => handleBridgeClick(b.id)}
+                           onMouseEnter={() => interactionMode < 2 && setHoveredBridgeId(b.id)}
+                           onMouseLeave={() => interactionMode < 2 && setHoveredBridgeId(null)}
+                           className={bridgeGroupClass}>
                           {b.type === 'h' ? (
                             <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 13} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={26} className={bridgeRectClass} />
                           ) : (
@@ -1719,11 +1798,59 @@
                       let strokeColor = "#1e293b"; let bgColor = "#ffffff"; let textColor = "#1e293b";
                       if (current === island.req) { strokeColor = "#059669"; bgColor = "#d1fae5"; textColor = "#065f46"; } 
                       else if (current > island.req) { strokeColor = "#dc2626"; bgColor = "#fee2e2"; textColor = "#991b1b"; }
+
+                      const showHighlight = highlightedIslandIds.has(island.id) && interactionMode < 2;
+                      const isDirectlyHovered = hoveredIslandId === island.id && interactionMode < 2;
+
                       return (
-                        <g key={`island-${island.id}`}>
-                          <circle cx={cx + 3} cy={cy + 3} r={ISLAND_RADIUS} fill="rgba(30,41,59,0.2)" />
+                        <g key={`island-${island.id}`}
+                           onMouseEnter={() => interactionMode < 2 && setHoveredIslandId(island.id)}
+                           onMouseLeave={() => interactionMode < 2 && setHoveredIslandId(null)}
+                        >
+                          {/* 島嶼底層發光光暈 (統一改為淺黃色) */}
+                          {showHighlight && (
+                              <circle cx={cx} cy={cy} r={ISLAND_RADIUS + 8} fill="#fde047" fillOpacity="0.5" className="pointer-events-none transition-all duration-300" />
+                          )}
+
+                          <circle cx={cx + 3} cy={cy + 3} r={ISLAND_RADIUS} fill="rgba(30,41,59,0.2)" className="pointer-events-none" />
                           <circle cx={cx} cy={cy} r={ISLAND_RADIUS} fill={bgColor} stroke={strokeColor} strokeWidth="4" className="transition-colors duration-300" />
                           <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none select-none transition-colors duration-300" fill={textColor}>{island.req}</text>
+                          
+                          {/* 游標指到島嶼時，周圍顯示可連線方向的提示點 */}
+                          {isDirectlyHovered && activeHints.map(b => {
+                             let dotCx = cx;
+                             let dotCy = cy;
+                             const offset = ISLAND_RADIUS + 14; 
+                             if (b.type === 'h') {
+                                 if (b.from === island.id) dotCx += offset;
+                                 else dotCx -= offset;
+                             } else {
+                                 if (b.from === island.id) dotCy += offset;
+                                 else dotCy -= offset;
+                             }
+                             
+                             const isCrossed = crossedBridgeIds.has(b.id);
+                             
+                             if (isCrossed) {
+                                 return (
+                                     <g key={`hint-${b.id}`} className="pointer-events-none animate-pulse" transform={`translate(${dotCx}, ${dotCy})`}>
+                                         <line x1="-4" y1="-4" x2="4" y2="4" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
+                                         <line x1="4" y1="-4" x2="-4" y2="4" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
+                                     </g>
+                                 );
+                             }
+                             
+                             return (
+                                 <circle 
+                                     key={`hint-${b.id}`} 
+                                     cx={dotCx} 
+                                     cy={dotCy} 
+                                     r="5" 
+                                     fill="#facc15" 
+                                     className="pointer-events-none animate-pulse" 
+                                 />
+                             );
+                          })}
                         </g>
                       );
                     })}
