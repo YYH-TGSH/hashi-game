@@ -83,24 +83,27 @@
       animation: dotAnim 1.5s infinite;
     }
 
-    /* 全域同步彩虹變數機制 */
-    @property --sync-rainbow {
-      syntax: '<color>';
-      inherits: true;
-      initial-value: #E3002B;
+    /* === 零耗能 SVG 材質動畫 (解決行動端 OOM 閃退) === */
+    @keyframes rainbowStopAnim {
+      0%{stop-color:#E3002B;} 5%{stop-color:#F35B00;} 10%{stop-color:#FFC90E;} 15%{stop-color:#D7157A;} 20%{stop-color:#E895C0;} 25%{stop-color:#007A61;} 30%{stop-color:#87D300;} 35%{stop-color:#C4D600;} 40%{stop-color:#8DD1BF;} 45%{stop-color:#616130;} 50%{stop-color:#00538A;} 55%{stop-color:#008CC1;} 60%{stop-color:#00C1D5;} 65%{stop-color:#79C8ED;} 70%{stop-color:#CDBB79;} 75%{stop-color:#41136A;} 80%{stop-color:#935CB9;} 85%{stop-color:#BCA8D1;} 90%{stop-color:#7A0026;} 95%{stop-color:#BC7B70;} 100%{stop-color:#E3002B;}
     }
-    @keyframes globalRainbowAnim {
-      0%{--sync-rainbow:#E3002B;} 5%{--sync-rainbow:#F35B00;} 10%{--sync-rainbow:#FFC90E;} 15%{--sync-rainbow:#D7157A;} 20%{--sync-rainbow:#E895C0;} 25%{--sync-rainbow:#007A61;} 30%{--sync-rainbow:#87D300;} 35%{--sync-rainbow:#C4D600;} 40%{--sync-rainbow:#8DD1BF;} 45%{--sync-rainbow:#616130;} 50%{--sync-rainbow:#00538A;} 55%{--sync-rainbow:#008CC1;} 60%{--sync-rainbow:#00C1D5;} 65%{--sync-rainbow:#79C8ED;} 70%{--sync-rainbow:#CDBB79;} 75%{--sync-rainbow:#41136A;} 80%{--sync-rainbow:#935CB9;} 85%{--sync-rainbow:#BCA8D1;} 90%{--sync-rainbow:#7A0026;} 95%{--sync-rainbow:#BC7B70;} 100%{--sync-rainbow:#E3002B;}
-    }
-    :root {
-      animation: globalRainbowAnim 20s linear infinite;
+    .rainbow-stop {
+      animation: rainbowStopAnim 20s linear infinite;
     }
     
-    /* 所有彩虹元素統一讀取全域變數 */
-    .rainbow-stroke { stroke: var(--sync-rainbow) !important; }
-    .rainbow-fill { fill: var(--sync-rainbow) !important; }
-    .rainbow-bg { background-color: var(--sync-rainbow) !important; color: white !important; border-color: transparent !important; }
-    .rainbow-border-left { border-left-color: var(--sync-rainbow) !important; border-left-width: 6px !important; border-left-style: solid !important; }
+    @keyframes rainbowBgAnim {
+      0%{background-color:#E3002B;} 5%{background-color:#F35B00;} 10%{background-color:#FFC90E;} 15%{background-color:#D7157A;} 20%{background-color:#E895C0;} 25%{background-color:#007A61;} 30%{background-color:#87D300;} 35%{background-color:#C4D600;} 40%{background-color:#8DD1BF;} 45%{background-color:#616130;} 50%{background-color:#00538A;} 55%{background-color:#008CC1;} 60%{background-color:#00C1D5;} 65%{background-color:#79C8ED;} 70%{background-color:#CDBB79;} 75%{background-color:#41136A;} 80%{background-color:#935CB9;} 85%{background-color:#BCA8D1;} 90%{background-color:#7A0026;} 95%{background-color:#BC7B70;} 100%{background-color:#E3002B;}
+    }
+    .rainbow-bg { animation: rainbowBgAnim 20s linear infinite; color: white !important; border-color: transparent !important; }
+    
+    @keyframes rainbowBorderAnim {
+      0%{border-left-color:#E3002B;} 5%{border-left-color:#F35B00;} 10%{border-left-color:#FFC90E;} 15%{border-left-color:#D7157A;} 20%{border-left-color:#E895C0;} 25%{border-left-color:#007A61;} 30%{border-left-color:#87D300;} 35%{border-left-color:#C4D600;} 40%{border-left-color:#8DD1BF;} 45%{border-left-color:#616130;} 50%{border-left-color:#00538A;} 55%{border-left-color:#008CC1;} 60%{border-left-color:#00C1D5;} 65%{border-left-color:#79C8ED;} 70%{border-left-color:#CDBB79;} 75%{border-left-color:#41136A;} 80%{border-left-color:#935CB9;} 85%{border-left-color:#BCA8D1;} 90%{border-left-color:#7A0026;} 95%{border-left-color:#BC7B70;} 100%{border-left-color:#E3002B;}
+    }
+    .rainbow-border-left { animation: rainbowBorderAnim 20s linear infinite; border-left-width: 6px !important; border-left-style: solid !important; }
+
+    /* 所有 SVG 物件改為讀取內部材質，徹底解決記憶體洩漏 */
+    .rainbow-stroke { stroke: url(#rainbowGrad) !important; }
+    .rainbow-fill { fill: url(#rainbowGrad) !important; }
 
     .custom-scrollbar::-webkit-scrollbar { width: 12px; height: 12px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-left: 2px solid #1e293b; border-top: 2px solid #1e293b; }
@@ -203,6 +206,7 @@
       const W = levelDef.width, H = levelDef.height;
       let grid = Array(H).fill(null).map(() => Array(W).fill(null));
 
+      // 1. 隨機放置島嶼 (高密度，且保證無正交相鄰，避免 2x2 填滿)
       for (let y = 0; y < H; y++) {
           for (let x = 0; x < W; x++) {
               let hasNeighbor = false;
@@ -217,6 +221,7 @@
           }
       }
 
+      // 2. 強制填補 3x3 空白區域 (確保不出現 3x3 完全無島嶼)
       for (let y = 0; y <= H - 3; y++) {
           for (let x = 0; x <= W - 3; x++) {
               let hasIsland = false;
@@ -246,6 +251,7 @@
           }
       }
 
+      // 3. 建立島嶼物件
       let islands = [];
       let islandId = 1;
       for (let y = 0; y < H; y++) {
@@ -258,15 +264,18 @@
           }
       }
 
+      // 4. 尋找所有可能的橋樑路徑 (視線內無阻擋)
       let potentialBridges = [];
       for (let i = 0; i < islands.length; i++) {
           let island = islands[i];
+          // 向右找
           for (let x = island.x + 1; x < W; x++) {
               if (grid[island.y][x]) {
                   potentialBridges.push({ from: island.id, to: grid[island.y][x].id, type: 'h', minX: island.x, maxX: x, y: island.y, len: x - island.x });
                   break;
               }
           }
+          // 向下找
           for (let y = island.y + 1; y < H; y++) {
               if (grid[y][island.x]) {
                   potentialBridges.push({ from: island.id, to: grid[y][island.x].id, type: 'v', minY: island.y, maxY: y, x: island.x, len: y - island.y });
@@ -275,8 +284,10 @@
           }
       }
 
+      // 依長度排序，優先連接近的島嶼，減少長橋交叉，讓畫面更順眼
       potentialBridges.sort((a, b) => a.len - b.len + (Math.random() - 0.5));
 
+      // 5. Kruskal's 演算法建立連通圖 (避免任何交叉)
       let uf = new Map();
       islands.forEach(i => uf.set(i.id, i.id));
       function find(i) { if (uf.get(i) === i) return i; let root = find(uf.get(i)); uf.set(i, root); return root; }
@@ -307,6 +318,7 @@
           }
       }
 
+      // 增加額外的橋樑產生迴圈 (加入環狀路徑，讓解題變化更多)
       for (let i=0; i<rejectedBridges.length; i++) {
           let b = rejectedBridges[i];
           if (!doesIntersect(b) && Math.random() < 0.4) {
@@ -314,6 +326,7 @@
           }
       }
 
+      // 6. 分配橋樑數量 (1 或 2) 並計算島嶼需求數字
       let islandDegree = {};
       islands.forEach(i => islandDegree[i.id] = 0);
       
@@ -326,6 +339,7 @@
       islands = islands.filter(i => islandDegree[i.id] > 0);
       islands.forEach(i => i.req = islandDegree[i.id]);
 
+      // 7. 確保全圖單一連通 (保留最大連通塊，刪除因交叉限制而被孤立的碎塊)
       if (islands.length > 0) {
           let adj = {};
           islands.forEach(i => adj[i.id] = []);
@@ -437,7 +451,7 @@
 
       // 互動模式 (0: 實線, 1: 草稿, 2: 繪圖)
       const [interactionMode, setInteractionMode] = useState(0);
-      const [drawSubMode, setDrawSubMode] = useState('pen');
+      const [drawSubMode, setDrawSubMode] = useState('pen'); // 'pen' 或 'eraser'
       
       const modeIcons = ['🖋️', '✏️', '🖌️'];
       const modeTitles = ['實線模式', '草稿模式', '繪圖作記號'];
@@ -1341,7 +1355,7 @@
       
       const handleQuickPaste = async () => {
         try { if (navigator.clipboard && navigator.clipboard.readText) { const text = await navigator.clipboard.readText(); if(text) { setSaveCode(text); showToast("✅ 貼上成功！"); } } else { throw new Error(); } } 
-        catch (err) { const ta = document.getElementById("saveCodeTextarea"); if (ta) ta.focus(); showToast("⚠️ 瀏覽器阻擋自動貼上，請手動貼上"); }
+        catch (err) { const ta = document.getElementById("saveCodeTextarea"); if (ta) ta.focus(); showToast("⚠️ 瀏覽器阻擋自動貼上，請手手動貼上"); }
       };
       
       const handleLoadCode = () => {
@@ -1468,7 +1482,7 @@
                  </div>
               </div>
             </div>
-            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.6.1)</div>
+            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.7)</div>
           </div>
         );
       }
@@ -1746,6 +1760,11 @@
                       <pattern id="warningStripe" width="16" height="16" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
                           <line x1="0" y1="0" x2="0" y2="16" stroke="#facc15" strokeWidth="8" strokeOpacity="0.7" />
                       </pattern>
+                      {/* 解決 OOM 的終極方案：SVG 內建零耗能材質動畫 */}
+                      <linearGradient id="rainbowGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" className="rainbow-stop" />
+                          <stop offset="100%" className="rainbow-stop" />
+                      </linearGradient>
                     </defs>
                     <rect width="100%" height="100%" fill="url(#grid)" transform={`translate(${PADDING}, ${PADDING})`} className="opacity-50 pointer-events-none" />
 
