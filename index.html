@@ -359,9 +359,11 @@
     // ==========================================
 
     function HashiGame() {
-      // === 唯一身分識別 ===
+      // === 唯一身分識別與個人狀態 ===
       const playerIdRef = useRef(Math.random().toString(36).substring(2, 12));
       const myId = playerIdRef.current;
+      const myNameRef = useRef("");
+      const myColorRef = useRef(COLORS[0]);
 
       const initialDataRef = useRef(null);
       if (!initialDataRef.current) {
@@ -447,6 +449,15 @@
       const svgW = (gridWidth - 1) * SCALE + PADDING * 2;
       const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
       const hasSolution = cLevel.solution && cLevel.solution.length > 0;
+
+      // 隨時同步自身的資料快取
+      useEffect(function() {
+        const me = playersList.find(p => p.id === myId);
+        if (me) {
+          myNameRef.current = me.name;
+          myColorRef.current = me.color;
+        }
+      }, [playersList, myId]);
 
       useEffect(function() {
         const initAuth = async function() {
@@ -575,6 +586,25 @@
         }
       };
 
+      // 幽靈玩家點名清除機制
+      const purgeGhostPlayers = () => {
+        if (!isHostRef.current) return;
+        setPlayersList(prev => {
+          const hostPlayer = prev.find(p => p.id === myId);
+          if (!hostPlayer) return prev;
+          const newList = [hostPlayer]; // 瞬間清空只留房主
+          
+          if (engineRef.current === 'firebase' && roomRef.current) {
+            updateDoc(roomRef.current, { players: newList }).catch(e => {});
+          } else if (engineRef.current === 'peerjs') {
+            connsRef.current = connsRef.current.filter(c => c.open);
+            connsRef.current.forEach(c => c.send({ type: 'PLAYERS_UPDATE', players: newList }));
+            connsRef.current.forEach(c => c.send({ type: 'REQ_REJOIN' }));
+          }
+          return newList;
+        });
+      };
+
       const syncState = (partial, shouldBroadcast = true) => {
         if (partial.bridges !== undefined) setBridges(partial.bridges);
         if (partial.showSolution !== undefined) setShowSolution(partial.showSolution);
@@ -688,6 +718,7 @@
       const handleRegenerateRandom = () => {
         setIsGenerating(true);
         setTimeout(() => {
+            purgeGhostPlayers();
             let targetLevelDef;
             if (currentLevelId === 'custom') {
                targetLevelDef = { id: 'custom', name: `⚙️ 自訂 (${randomLevelData.width}x${randomLevelData.height})`, width: randomLevelData.width, height: randomLevelData.height, description: "玩家自訂尺寸的大型地圖！" };
@@ -712,6 +743,7 @@
 
         setIsGenerating(true);
         setTimeout(() => {
+            purgeGhostPlayers();
             const targetLevelDef = LEVELS.find(l => l.id === newLevelId);
             if(!targetLevelDef) {
                 setIsGenerating(false);
@@ -734,6 +766,7 @@
           
           setIsGenerating(true);
           setTimeout(() => {
+              purgeGhostPlayers();
               const customLevelDef = { id: 'custom', name: `⚙️ 自訂 (${w}x${h})`, width: w, height: h, description: "玩家自訂尺寸的大型地圖！" };
               const newRandomData = generateRandomHashi(customLevelDef);
               const empty = generateEmptyBridges(newRandomData);
@@ -779,6 +812,7 @@
       const initiateHostGame = () => {
         const pName = tempPlayerName.trim();
         if (!pName) return showToast("⚠️ 請先設定顯示暱稱");
+        myNameRef.current = pName;
         
         setIsConnecting(true); 
         const rId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -797,6 +831,7 @@
         const pName = tempPlayerName.trim();
         const rId = tempRoomId.trim().toUpperCase();
         if (!pName || !rId) return showToast("⚠️ 請完整輸入暱稱與代碼");
+        myNameRef.current = pName;
         
         setIsConnecting(true); 
         if (/^[a-zA-Z]/.test(rId)) { 
@@ -844,7 +879,15 @@
                switchToOffline(); return; 
             }
             const data = docSnap.data();
-            setPlayersList(data.players || []);
+            const serverPlayers = data.players || [];
+            setPlayersList(serverPlayers);
+
+            // === 幽靈玩家清除機制：若我是訪客被移除了，代表房主正在點名，立刻回加自己以證明還活著 ===
+            if (!isHostRef.current && !serverPlayers.find(p => p.id === myId)) {
+                const updatedPList = [...serverPlayers, { id: myId, name: myNameRef.current, isHost: false, color: myColorRef.current }];
+                updateDoc(rDoc, { players: updatedPList }).catch(e => {});
+            }
+
             if (data.gameState) {
               const gs = data.gameState;
               if (gs.bridges) setBridges(gs.bridges);
@@ -877,8 +920,9 @@
                   if (m.type === 'JOIN') {
                       setPlayersList(prev => {
                           if(prev.find(pl => pl.id===m.uid)) return prev;
-                          const nList = [...prev, { id: m.uid, name: m.pName, isHost: false, color: COLORS[prev.length % COLORS.length] }];
+                          const nList = [...prev, { id: m.uid, name: m.pName, isHost: false, color: m.color || COLORS[prev.length % COLORS.length] }];
                           connsRef.current.forEach(conn => conn.send({ type: 'INIT', data: stateRef.current, players: nList }));
+                          connsRef.current.forEach(conn => conn.send({ type: 'PLAYERS_UPDATE', players: nList }));
                           return nList;
                       });
                   } else if (m.type === 'SYNC') {
@@ -930,6 +974,9 @@
                       setCursors(prev => ({ ...prev, [m.uid]: { x: m.x, y: m.y } }));
                   } else if (m.type === 'CLICK') {
                       setRipples(prev => [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]);
+                  } else if (m.type === 'REQ_REJOIN') {
+                      // 收到房主點名，回傳連線證明
+                      connRef.current.send({ type: 'JOIN', pName: myNameRef.current, uid: myId, color: myColorRef.current });
                   }
                 });
                 c.on('close', function() { showToast("⚠️ 主機已離線，切換為單機模式"); switchToOffline(); });
