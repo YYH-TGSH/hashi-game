@@ -82,6 +82,26 @@
       content: '';
       animation: dotAnim 1.5s infinite;
     }
+
+    /* 全域同步彩虹變數機制 */
+    @property --sync-rainbow {
+      syntax: '<color>';
+      inherits: true;
+      initial-value: #E3002B;
+    }
+    @keyframes globalRainbowAnim {
+      0%{--sync-rainbow:#E3002B;} 5%{--sync-rainbow:#F35B00;} 10%{--sync-rainbow:#FFC90E;} 15%{--sync-rainbow:#D7157A;} 20%{--sync-rainbow:#E895C0;} 25%{--sync-rainbow:#007A61;} 30%{--sync-rainbow:#87D300;} 35%{--sync-rainbow:#C4D600;} 40%{--sync-rainbow:#8DD1BF;} 45%{--sync-rainbow:#616130;} 50%{--sync-rainbow:#00538A;} 55%{--sync-rainbow:#008CC1;} 60%{--sync-rainbow:#00C1D5;} 65%{--sync-rainbow:#79C8ED;} 70%{--sync-rainbow:#CDBB79;} 75%{--sync-rainbow:#41136A;} 80%{--sync-rainbow:#935CB9;} 85%{--sync-rainbow:#BCA8D1;} 90%{--sync-rainbow:#7A0026;} 95%{--sync-rainbow:#BC7B70;} 100%{--sync-rainbow:#E3002B;}
+    }
+    :root {
+      animation: globalRainbowAnim 20s linear infinite;
+    }
+    
+    /* 所有彩虹元素統一讀取全域變數 */
+    .rainbow-stroke { stroke: var(--sync-rainbow) !important; }
+    .rainbow-fill { fill: var(--sync-rainbow) !important; }
+    .rainbow-bg { background-color: var(--sync-rainbow) !important; color: white !important; border-color: transparent !important; }
+    .rainbow-border-left { border-left-color: var(--sync-rainbow) !important; border-left-width: 6px !important; border-left-style: solid !important; }
+
     .custom-scrollbar::-webkit-scrollbar { width: 12px; height: 12px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-left: 2px solid #1e293b; border-top: 2px solid #1e293b; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border: 2px solid #1e293b; border-radius: 6px; }
@@ -145,13 +165,24 @@
       { id: 'custom', name: "⚙️ 自訂尺寸", width: 30, height: 30, description: "自訂地圖長寬，適合多人合作挑戰！" }
     ];
 
+    // 取出可用且不重複顏色的輔助函數
+    const getAvailableColor = (currentPlayers) => {
+        const usedColors = currentPlayers.map(p => p.color);
+        const available = COLORS.filter(c => !usedColors.includes(c));
+        if (available.length > 0) {
+            return available[Math.floor(Math.random() * available.length)];
+        }
+        return COLORS[Math.floor(Math.random() * COLORS.length)];
+    };
+
     // ==========================================
-    // 智慧逆向生成演算法
+    // 全新高密度智慧演算法 (網格掃描 + Kruskal生成樹)
     // ==========================================
     function generateRandomHashi(levelDef) {
       const W = levelDef.width, H = levelDef.height;
       let grid = Array(H).fill(null).map(() => Array(W).fill(null));
 
+      // 1. 隨機放置島嶼 (高密度，且保證無正交相鄰，避免 2x2 填滿)
       for (let y = 0; y < H; y++) {
           for (let x = 0; x < W; x++) {
               let hasNeighbor = false;
@@ -166,6 +197,7 @@
           }
       }
 
+      // 2. 強制填補 3x3 空白區域 (確保不出現 3x3 完全無島嶼)
       for (let y = 0; y <= H - 3; y++) {
           for (let x = 0; x <= W - 3; x++) {
               let hasIsland = false;
@@ -195,6 +227,7 @@
           }
       }
 
+      // 3. 建立島嶼物件
       let islands = [];
       let islandId = 1;
       for (let y = 0; y < H; y++) {
@@ -207,15 +240,18 @@
           }
       }
 
+      // 4. 尋找所有可能的橋樑路徑 (視線內無阻擋)
       let potentialBridges = [];
       for (let i = 0; i < islands.length; i++) {
           let island = islands[i];
+          // 向右找
           for (let x = island.x + 1; x < W; x++) {
               if (grid[island.y][x]) {
                   potentialBridges.push({ from: island.id, to: grid[island.y][x].id, type: 'h', minX: island.x, maxX: x, y: island.y, len: x - island.x });
                   break;
               }
           }
+          // 向下找
           for (let y = island.y + 1; y < H; y++) {
               if (grid[y][island.x]) {
                   potentialBridges.push({ from: island.id, to: grid[y][island.x].id, type: 'v', minY: island.y, maxY: y, x: island.x, len: y - island.y });
@@ -224,8 +260,10 @@
           }
       }
 
+      // 依長度排序，優先連接近的島嶼，減少長橋交叉，讓畫面更順眼
       potentialBridges.sort((a, b) => a.len - b.len + (Math.random() - 0.5));
 
+      // 5. Kruskal's 演算法建立連通圖 (避免任何交叉)
       let uf = new Map();
       islands.forEach(i => uf.set(i.id, i.id));
       function find(i) { if (uf.get(i) === i) return i; let root = find(uf.get(i)); uf.set(i, root); return root; }
@@ -256,6 +294,7 @@
           }
       }
 
+      // 增加額外的橋樑產生迴圈 (加入環狀路徑，讓解題變化更多)
       for (let i=0; i<rejectedBridges.length; i++) {
           let b = rejectedBridges[i];
           if (!doesIntersect(b) && Math.random() < 0.4) {
@@ -263,6 +302,7 @@
           }
       }
 
+      // 6. 分配橋樑數量 (1 或 2) 並計算島嶼需求數字
       let islandDegree = {};
       islands.forEach(i => islandDegree[i.id] = 0);
       
@@ -275,6 +315,7 @@
       islands = islands.filter(i => islandDegree[i.id] > 0);
       islands.forEach(i => i.req = islandDegree[i.id]);
 
+      // 7. 確保全圖單一連通 (保留最大連通塊，刪除因交叉限制而被孤立的碎塊)
       if (islands.length > 0) {
           let adj = {};
           islands.forEach(i => adj[i.id] = []);
@@ -406,6 +447,8 @@
 
       // 色票選擇器狀態：紀錄目前正在修改哪個玩家的顏色
       const [colorPickerTarget, setColorPickerTarget] = useState(null);
+      // 彩蛋顏色解鎖序列追蹤
+      const [colorSeq, setColorSeq] = useState([]);
 
       // === 多人連線與游標狀態 ===
       const [roomId, setRoomId] = useState("");
@@ -451,18 +494,21 @@
       const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
       const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
-      // 隨時同步自身資料
-      useEffect(function() {
-        const me = playersList.find(p => p.id === myId);
-        if (me) {
-          myNameRef.current = me.name;
-          myColorRef.current = me.color;
-        }
-      }, [playersList, myId]);
+      // 取得玩家顏色 (解決舊版延遲 Bug：確保渲染時即時同步名單資料)
+      const getPlayerColor = (uid) => {
+          const p = playersList.find(p => p.id === uid);
+          return p ? p.color : COLORS[0];
+      };
+      
+      // 單一數據源：永遠根據最新 React State 決定自己的顏色
+      const myCurrentColor = getPlayerColor(myId);
+      const _mePlayer = playersList.find(p => p.id === myId);
+      myNameRef.current = _mePlayer ? _mePlayer.name : "";
+      myColorRef.current = myCurrentColor;
 
-      // 當切換到 Firebase 時，鎖定繪圖功能
+      // 當非 PeerJS 模式時（如單機或 Firebase），鎖定繪圖功能
       useEffect(function() {
-        if (engine === 'firebase' && interactionMode >= 2) {
+        if (engine !== 'peerjs' && interactionMode >= 2) {
             setInteractionMode(0);
         }
       }, [engine, interactionMode]);
@@ -512,7 +558,7 @@
             if (lastPinchDist.current) {
               const delta = dist - lastPinchDist.current;
               setZoomLevel(prev => Math.min(Math.max(prev + delta * 0.005, 0.4), 3.5));
-              setZoomModeIdx(0); 
+              setZoomModeIdx(0); // 取消自動縮放狀態
             }
             lastPinchDist.current = dist;
           } else if (e.touches.length === 1 && touchStartY !== null) {
@@ -524,7 +570,7 @@
         const handleWheel = (e) => { 
             if (interactionMode >= 2) return;
             if (Math.abs(e.deltaY) > 10 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); } 
-            if (e.ctrlKey) setZoomModeIdx(0); 
+            if (e.ctrlKey) setZoomModeIdx(0); // 如果使用者用滾輪縮放，解除適應狀態
         };
         
         el.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -574,7 +620,13 @@
               const els = document.elementsFromPoint(cx + off[0], cy + off[1]);
               for (let el of els) {
                   if (el.classList.contains('doodle-stroke')) {
-                      hitIds.add(el.getAttribute('data-stroke-id'));
+                      const sid = el.getAttribute('data-stroke-id');
+                      const strokeObj = stateRef.current.strokes.find(s => s.id === sid);
+                      const strokeUid = (strokeObj && strokeObj.uid) || (strokeObj ? strokeObj.id.split('-')[1] : null);
+                      // 雙重保險：只允許將「屬於自己」的筆跡加入刪除名單
+                      if (strokeUid === myId) {
+                          hitIds.add(sid);
+                      }
                   }
               }
           }
@@ -596,7 +648,7 @@
             if (drawSubMode === 'pen') {
                 isDrawingRef.current = true;
                 // 新增明確記錄 uid，方便後續動態綁定顏色
-                setCurrentPath({ id: Date.now() + '-' + myId, uid: myId, path: `M ${pt.x} ${pt.y}`, color: myColorRef.current });
+                setCurrentPath({ id: Date.now() + '-' + myId, uid: myId, path: `M ${pt.x} ${pt.y}` });
             } else if (drawSubMode === 'eraser') {
                 eraseAtPoint(e.clientX, e.clientY);
             }
@@ -780,7 +832,7 @@
       };
 
       const toggleInteractionMode = () => {
-        const maxModes = engineRef.current === 'firebase' ? 2 : 3;
+        const maxModes = engineRef.current === 'peerjs' ? 3 : 2;
         const nextMode = (interactionMode + 1) % maxModes;
         setInteractionMode(nextMode);
         showToast(`${modeIcons[nextMode]} 已切換為 ${modeTitles[nextMode]}`);
@@ -897,7 +949,6 @@
       const initiateHostGame = () => {
         const pName = tempPlayerName.trim();
         if (!pName) return showToast("⚠️ 請先設定顯示暱稱");
-        myNameRef.current = pName;
         
         setIsConnecting(true); 
         const rId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -916,7 +967,6 @@
         const pName = tempPlayerName.trim();
         const rId = tempRoomId.trim().toUpperCase();
         if (!pName || !rId) return showToast("⚠️ 請完整輸入暱稱與代碼");
-        myNameRef.current = pName;
         
         setIsConnecting(true); 
         if (/^[a-zA-Z]/.test(rId)) { 
@@ -942,8 +992,9 @@
           if (isCreating) {
             setIsHost(true); isHostRef.current = true;
             const safeState = JSON.parse(JSON.stringify(stateRef.current));
+            const initialColor = getAvailableColor([]);
             await Promise.race([
-                setDoc(rDoc, { hostId: myId, players: [{id: myId, name: pName, isHost: true, color: COLORS[0]}], gameState: safeState, updatedAt: Date.now() }),
+                setDoc(rDoc, { hostId: myId, players: [{id: myId, name: pName, isHost: true, color: initialColor}], gameState: safeState, updatedAt: Date.now() }),
                 timeout(6000)
             ]);
           } else {
@@ -952,7 +1003,7 @@
             setIsHost(false); isHostRef.current = false;
             let pList = snap.data().players || [];
             if (!pList.find(p => p.id === myId)) {
-              pList.push({ id: myId, name: pName, isHost: false, color: COLORS[pList.length % COLORS.length] });
+              pList.push({ id: myId, name: pName, isHost: false, color: getAvailableColor(pList) });
               await Promise.race([updateDoc(rDoc, { players: pList, updatedAt: Date.now() }), timeout(6000)]);
             }
           }
@@ -997,7 +1048,7 @@
             p.on('open', function() {
               setIsHost(true); isHostRef.current = true;
               setRoomId(rId); setScreen('game'); setIsHeaderCollapsed(false); setIsConnecting(false);
-              setPlayersList([{ id: myId, name: pName, isHost: true, color: COLORS[0] }]);
+              setPlayersList([{ id: myId, name: pName, isHost: true, color: getAvailableColor([]) }]);
               
               p.on('connection', function(c) {
                 connsRef.current.push(c);
@@ -1005,7 +1056,8 @@
                   if (m.type === 'JOIN') {
                       setPlayersList(prev => {
                           if(prev.find(pl => pl.id===m.uid)) return prev;
-                          const nList = [...prev, { id: m.uid, name: m.pName, isHost: false, color: m.color || COLORS[prev.length % COLORS.length] }];
+                          const newColor = m.color || getAvailableColor(prev);
+                          const nList = [...prev, { id: m.uid, name: m.pName, isHost: false, color: newColor }];
                           connsRef.current.forEach(conn => conn.send({ type: 'INIT', data: stateRef.current, players: nList }));
                           connsRef.current.forEach(conn => conn.send({ type: 'PLAYERS_UPDATE', players: nList }));
                           return nList;
@@ -1305,7 +1357,7 @@
         <div className="h-screen w-screen p-1 md:p-4 flex flex-col items-center font-sans relative" style={{ backgroundColor: '#fdf5e6', backgroundImage: 'radial-gradient(#d3c5ab 2px, transparent 2px)', backgroundSize: '12px 12px' }}>
           <div className="w-full max-w-[1200px] bg-[#fffaf0] rounded-xl border-4 border-slate-800 shadow-[8px_8px_0px_rgba(30,41,59,1)] flex flex-col h-full relative z-10 overflow-hidden">
             
-            <div className={`bg-[#ffcc00] border-b-4 border-slate-800 shrink-0 z-20 relative transition-all duration-300 ease-in-out px-2 md:px-4 py-2 flex flex-col gap-2`}>
+            <div className={`bg-[#ffcc00] border-b-4 border-slate-800 shrink-0 z-50 relative transition-all duration-300 ease-in-out px-2 md:px-4 py-2 flex flex-col gap-2`}>
                <div className="flex items-center justify-between gap-1 w-full">
                   <div className="flex items-center gap-2 flex-wrap">
                      <h1 className="font-black tracking-tight uppercase text-lg md:text-2xl text-[#2d2a26] flex items-center gap-1">🌉<span className="hidden sm:inline">數橋</span></h1>
@@ -1359,17 +1411,18 @@
             </div>
 
             {isMultiplayer && (
-              <div className="px-4 py-2 bg-[#fffdfa] border-b-4 border-slate-800 flex flex-wrap gap-2 items-center relative z-[25] shadow-inner shrink-0">
+              <div className="px-4 py-2 bg-[#fffdfa] border-b-4 border-slate-800 flex flex-wrap gap-2 items-center relative z-40 shadow-inner shrink-0">
                 <span className="font-black text-slate-800 text-sm">👥 連線玩家：</span>
                 {playersList.map((p, idx) => {
                   const isMe = p.id === myId;
+                  const isRainbow = p.color === 'rainbow';
                   return (
                     <div key={idx} className="relative inline-flex">
                       <span 
                             onClick={() => setColorPickerTarget(prev => prev === p.id ? null : p.id)} 
                             title={isMe ? "點擊可切換你的代表色" : "點擊可為這位玩家更換顏色"} 
-                            className={`px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-white text-slate-800 flex items-center shadow-[1px_1px_0px_rgba(30,41,59,1)] cursor-pointer hover:bg-slate-100 transition-colors`} 
-                            style={{ borderLeftColor: p.color, borderLeftWidth: '6px' }}>
+                            className={`px-2 py-0.5 rounded border-2 border-slate-800 text-xs font-bold bg-white text-slate-800 flex items-center shadow-[1px_1px_0px_rgba(30,41,59,1)] cursor-pointer hover:bg-slate-100 ${isRainbow ? 'rainbow-border-left' : 'transition-colors'}`} 
+                            style={isRainbow ? undefined : { borderLeftColor: p.color, borderLeftWidth: '6px' }}>
                         {p.name} {p.isHost && '👑'} {isMe && '(你)'}
                       </span>
                       
@@ -1377,7 +1430,7 @@
                         <div className="absolute top-full mt-2 left-0 sm:left-0 bg-[#fffdfa] border-[3px] border-slate-800 rounded-xl p-3 shadow-[4px_4px_0px_rgba(30,41,59,1)] z-[100] w-[180px] animate-fadeIn">
                           <div className="flex justify-between items-center mb-2 border-b-2 border-slate-800 pb-1">
                             <h3 className="text-xs font-black text-slate-800">🎨 選色</h3>
-                            <button onClick={(e) => { e.stopPropagation(); setColorPickerTarget(null); }} className="text-slate-400 hover:text-slate-800 font-black leading-none">✕</button>
+                            <button onClick={(e) => { e.stopPropagation(); setColorPickerTarget(null); setColorSeq([]); }} className="text-slate-400 hover:text-slate-800 font-black leading-none">✕</button>
                           </div>
                           <div className="grid grid-cols-5 gap-1.5">
                             {COLORS.map(color => (
@@ -1385,8 +1438,31 @@
                                 key={color}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handlePlayerColorChange(p.id, color);
-                                  setColorPickerTarget(null);
+                                  const colorIdx = COLORS.indexOf(color);
+                                  let newSeq = [...colorSeq, colorIdx];
+                                  // 彩虹解鎖密碼：左上(0), 右上(4), 左下(15), 右下(19)
+                                  const targetSeq = [0, 4, 15, 19];
+                                  
+                                  let isValid = true;
+                                  for (let i = 0; i < newSeq.length; i++) {
+                                      if (newSeq[i] !== targetSeq[i]) { isValid = false; break; }
+                                  }
+                                  
+                                  if (isValid) {
+                                      setColorSeq(newSeq);
+                                      if (newSeq.length === 4) {
+                                          handlePlayerColorChange(p.id, 'rainbow');
+                                          setColorPickerTarget(null);
+                                          showToast("🌈 解鎖隱藏彩色漸變！");
+                                          setColorSeq([]);
+                                      } else {
+                                          handlePlayerColorChange(p.id, color);
+                                      }
+                                  } else {
+                                      setColorSeq([]);
+                                      handlePlayerColorChange(p.id, color);
+                                      setColorPickerTarget(null);
+                                  }
                                 }}
                                 className="w-6 h-6 rounded-full border-[2px] border-slate-800 shadow-[1px_1px_0px_rgba(30,41,59,1)] hover:scale-110 hover:shadow-[2px_2px_0px_rgba(30,41,59,1)] transition-all active:scale-95 active:shadow-none"
                                 style={{ backgroundColor: color }}
@@ -1422,7 +1498,7 @@
               </div>
             )}
 
-            <div className="relative z-10 flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
+            <div className="relative z-0 flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
               
               {isGenerating && (
                 <div className="absolute inset-0 z-[40] flex items-center justify-center pointer-events-none">
@@ -1432,19 +1508,21 @@
                 </div>
               )}
 
-              <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto items-end">
+              <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-[5] pointer-events-auto items-end">
                 <div className="flex items-center">
                    {interactionMode === 2 && (
                        <div className="flex items-center gap-2 animate-fadeIn bg-white/80 p-1.5 rounded-full border-2 border-slate-300 backdrop-blur-sm mr-2 shadow-[2px_2px_0px_rgba(30,41,59,1)]">
                            <button 
                                onClick={() => setDrawSubMode('pen')} 
-                               className={`w-9 h-9 md:w-10 md:h-10 border-2 border-slate-800 rounded-full font-black text-lg transition-all flex items-center justify-center shadow-sm ${drawSubMode === 'pen' ? 'bg-blue-500 text-white scale-110 shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                               className={`w-9 h-9 md:w-10 md:h-10 border-2 border-slate-800 rounded-full font-black text-lg flex items-center justify-center shadow-sm transition-[transform,color] ${drawSubMode === 'pen' ? (myCurrentColor === 'rainbow' ? 'text-white scale-110 shadow-md rainbow-bg' : 'text-white scale-110 shadow-md') : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                               style={drawSubMode === 'pen' && myCurrentColor !== 'rainbow' ? { backgroundColor: myCurrentColor } : {}}
                                title="畫筆 (可直接在畫布上任意做記號)"
                            >🖌️</button>
                            <button 
                                onClick={() => setDrawSubMode('eraser')} 
                                onDoubleClick={clearOwnStrokes} 
-                               className={`w-9 h-9 md:w-10 md:h-10 border-2 border-slate-800 rounded-full font-black text-lg transition-all flex items-center justify-center shadow-sm ${drawSubMode === 'eraser' ? 'bg-pink-400 text-white scale-110 shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                               className={`w-9 h-9 md:w-10 md:h-10 border-2 border-slate-800 rounded-full font-black text-lg flex items-center justify-center shadow-sm transition-[transform,color] ${drawSubMode === 'eraser' ? (myCurrentColor === 'rainbow' ? 'text-white scale-110 shadow-md rainbow-bg' : 'text-white scale-110 shadow-md') : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                               style={drawSubMode === 'eraser' && myCurrentColor !== 'rainbow' ? { backgroundColor: myCurrentColor } : {}}
                                title="橡皮擦 (連點兩下清空自己的所有塗鴉)"
                            >🧽</button>
                            {isHostRef.current && (
@@ -1467,7 +1545,7 @@
                 </button>
               </div>
 
-              <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative">
+              <div ref={zoomContainerRef} className="p-2 md:p-6 flex-1 overflow-auto custom-scrollbar relative z-0">
                 <div className="flex justify-center items-center min-w-max min-h-max m-auto pb-24 pr-20">
                   <svg 
                     ref={svgRef}
@@ -1521,31 +1599,30 @@
 
                     {/* 塗鴉筆跡 */}
                     {strokes.map(s => {
+                        const strokeUid = s.uid || s.id.split('-')[1];
+                        const isOwnStroke = strokeUid === myId;
+                        
                         let strokeColor = s.color;
                         let strokeOpacity = 1;
-                        // 支援舊版存檔與新版架構
-                        const strokeUid = s.uid || s.id.split('-')[1];
+                        let isRainbow = false;
                         
                         if (isMultiplayer && strokeUid) {
-                            const ownerObj = playersList.find(p => p.id === strokeUid);
-                            if (ownerObj) strokeColor = ownerObj.color;
-                            if (strokeUid !== myId) strokeOpacity = 0.5;
+                            strokeColor = getPlayerColor(strokeUid);
+                            if (strokeColor === 'rainbow') isRainbow = true;
+                            strokeOpacity = isOwnStroke ? 1 : 0.5;
                         }
-
-                        // 判斷是否為自己的筆跡
-                        const isOwnStroke = strokeUid === myId;
 
                         return (
                             <path
                                 key={s.id}
                                 d={s.path}
                                 fill="none"
-                                stroke={strokeColor}
+                                stroke={isRainbow ? undefined : strokeColor}
                                 strokeOpacity={strokeOpacity}
                                 strokeWidth="8"
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                className="doodle-stroke"
+                                className={`doodle-stroke ${isRainbow ? 'rainbow-stroke' : ''}`}
                                 data-stroke-id={s.id}
                                 // 只有自己的筆跡在橡皮擦模式下才會有實體碰撞，其他人的筆跡直接物理穿透
                                 style={{ pointerEvents: (interactionMode === 2 && drawSubMode === 'eraser' && isOwnStroke) ? 'stroke' : 'none' }}
@@ -1556,12 +1633,12 @@
                         <path
                             d={currentPath.path}
                             fill="none"
-                            stroke={myColorRef.current}
+                            stroke={myCurrentColor === 'rainbow' ? undefined : myCurrentColor}
                             strokeOpacity={1}
                             strokeWidth="8"
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="pointer-events-none"
+                            className={`pointer-events-none ${myCurrentColor === 'rainbow' ? 'rainbow-stroke' : ''}`}
                         />
                     )}
 
@@ -1575,16 +1652,18 @@
                       
                       let lineStroke = "#1e293b"; 
                       let lineOpacity = 1;
+                      let isRainbow = false;
                       
                       if (isMultiplayer && totalLines > 0 && b.owner) {
-                          const ownerObj = playersList.find(p => p.id === b.owner);
-                          if (ownerObj) lineStroke = ownerObj.color;
-                          if (b.owner !== myId) lineOpacity = 0.5; 
+                          lineStroke = getPlayerColor(b.owner);
+                          if (lineStroke === 'rainbow') isRainbow = true;
+                          lineOpacity = (b.owner === myId) ? 1 : 0.5; 
                       }
 
                       // 在繪圖/橡皮擦模式下，關閉橋樑的滑鼠感應與黃色 Hover 效果
                       const bridgeGroupClass = interactionMode >= 2 ? "pointer-events-none" : "cursor-pointer group";
                       const bridgeRectClass = interactionMode >= 2 ? "fill-transparent" : "fill-transparent group-hover:fill-yellow-300/30 transition-colors";
+                      const bridgeLineClass = `pointer-events-none ${isRainbow ? 'rainbow-stroke' : 'transition-colors duration-300'}`;
 
                       if (totalLines === 0) return (
                         <g key={b.id} onClick={() => handleBridgeClick(b.id)} className={bridgeGroupClass}>
@@ -1623,12 +1702,12 @@
                               const isDraft = lineObj.isDraft;
                               const off = lineObj.offset;
                               const w = totalLines === 1 ? (isDraft ? "5" : "6") : (isDraft ? "4" : "5");
-                              const op = isDraft ? 0.4 : lineOpacity;
+                              const op = isDraft ? (lineOpacity * 0.4) : lineOpacity; // 解決飽和度問題：草稿模式一律再降透明度
                               const dash = isDraft ? "8,6" : "none";
                               if (b.type === 'h') {
-                                 return <line key={lIdx} x1={x1} y1={y1+off} x2={x2} y2={y2+off} stroke={lineStroke} strokeWidth={w} strokeLinecap="round" strokeOpacity={op} strokeDasharray={dash} className="transition-all duration-300 pointer-events-none" />;
+                                 return <line key={lIdx} x1={x1} y1={y1+off} x2={x2} y2={y2+off} stroke={isRainbow ? undefined : lineStroke} strokeWidth={w} strokeLinecap="round" strokeOpacity={op} strokeDasharray={dash} className={bridgeLineClass} />;
                               } else {
-                                 return <line key={lIdx} x1={x1+off} y1={y1} x2={x2+off} y2={y2} stroke={lineStroke} strokeWidth={w} strokeLinecap="round" strokeOpacity={op} strokeDasharray={dash} className="transition-all duration-300 pointer-events-none" />;
+                                 return <line key={lIdx} x1={x1+off} y1={y1} x2={x2+off} y2={y2} stroke={isRainbow ? undefined : lineStroke} strokeWidth={w} strokeLinecap="round" strokeOpacity={op} strokeDasharray={dash} className={bridgeLineClass} />;
                               }
                           })}
                         </g>
@@ -1651,7 +1730,7 @@
 
                     {/* 橡皮擦游標範圍指示器 */}
                     {interactionMode === 2 && drawSubMode === 'eraser' && eraserPos && (
-                        <circle cx={eraserPos.x} cy={eraserPos.y} r="15" fill={myColorRef.current} fillOpacity="0.4" stroke={myColorRef.current} strokeWidth="2" className="pointer-events-none" />
+                        <circle cx={eraserPos.x} cy={eraserPos.y} r="15" fill={myCurrentColor === 'rainbow' ? undefined : myCurrentColor} fillOpacity="0.4" stroke={myCurrentColor === 'rainbow' ? undefined : myCurrentColor} strokeWidth="2" className={`pointer-events-none ${myCurrentColor === 'rainbow' ? 'rainbow-stroke rainbow-fill' : ''}`} />
                     )}
 
                     {showOtherCursors && engineRef.current === 'peerjs' && Object.entries(cursors).map(entry => {
@@ -1659,9 +1738,10 @@
                         if (uid === myId) return null;
                         const player = playersList.find(p => p.id === uid);
                         if (!player) return null;
+                        const isRainbow = player.color === 'rainbow';
                         return (
                             <g key={`cursor-${uid}`} transform={`translate(${pos.x}, ${pos.y})`} className="pointer-events-none transition-transform duration-75 ease-linear">
-                               <path d="M0,0 L16,6 L10,10 L15,19 L11,21 L6,12 L0,18 Z" fill={player.color} stroke="white" strokeWidth="2" />
+                               <path d="M0,0 L16,6 L10,10 L15,19 L11,21 L6,12 L0,18 Z" fill={isRainbow ? undefined : player.color} stroke="white" strokeWidth="2" className={isRainbow ? 'rainbow-fill' : ''} />
                                <rect x="14" y="22" rx="4" ry="4" width={player.name.length * 14 + 12} height="22" fill="rgba(0,0,0,0.6)" />
                                <text x="20" y="37" fill="white" fontSize="13" fontWeight="bold">{player.name}</text>
                             </g>
@@ -1671,8 +1751,9 @@
                     {showOtherCursors && engineRef.current === 'peerjs' && ripples.map(r => {
                         const player = playersList.find(p => p.id === r.uid);
                         const color = player ? player.color : '#3b82f6';
+                        const isRainbow = color === 'rainbow';
                         return (
-                            <circle key={r.id} cx={r.x} cy={r.y} r="20" fill="none" stroke={color} className="pointer-events-none" style={{ transformOrigin: `${r.x}px ${r.y}px`, animation: 'rippleAnim 0.8s ease-out forwards' }} />
+                            <circle key={r.id} cx={r.x} cy={r.y} r="20" fill="none" stroke={isRainbow ? undefined : color} className={`pointer-events-none ${isRainbow ? 'rainbow-stroke' : ''}`} style={{ transformOrigin: `${r.x}px ${r.y}px`, animation: 'rippleAnim 0.8s ease-out forwards' }} />
                         );
                     })}
                   </svg>
