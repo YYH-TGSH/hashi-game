@@ -129,10 +129,10 @@
 
     // === 上海地鐵 20 色票 ===
     const COLORS = [
-      '#E3002B', '#F35B00', '#FFC90E', '#D7157A', '#E895C0', // 紅、橘、黃、洋紅、粉紅
-      '#007A61', '#87D300', '#C4D600', '#8DD1BF', '#616130', // 深綠、草綠、萊姆、薄荷綠、橄欖
-      '#00538A', '#008CC1', '#00C1D5', '#79C8ED', '#CDBB79', // 海軍藍、藍、青、淺藍、沙黃
-      '#41136A', '#935CB9', '#BCA8D1', '#7A0026', '#BC7B70'  // 深紫、紫、丁香紫、酒紅、蜜桃
+      '#E3002B', '#F35B00', '#FFC90E', '#D7157A', '#E895C0', 
+      '#007A61', '#87D300', '#C4D600', '#8DD1BF', '#616130', 
+      '#00538A', '#008CC1', '#00C1D5', '#79C8ED', '#CDBB79', 
+      '#41136A', '#935CB9', '#BCA8D1', '#7A0026', '#BC7B70'  
     ];
 
     // === 關卡設定 ===
@@ -146,13 +146,12 @@
     ];
 
     // ==========================================
-    // 全新高密度智慧演算法 (網格掃描 + Kruskal生成樹)
+    // 智慧逆向生成演算法
     // ==========================================
     function generateRandomHashi(levelDef) {
       const W = levelDef.width, H = levelDef.height;
       let grid = Array(H).fill(null).map(() => Array(W).fill(null));
 
-      // 1. 隨機放置島嶼 (高密度，且保證無正交相鄰，避免 2x2 填滿)
       for (let y = 0; y < H; y++) {
           for (let x = 0; x < W; x++) {
               let hasNeighbor = false;
@@ -167,7 +166,6 @@
           }
       }
 
-      // 2. 強制填補 3x3 空白區域 (確保不出現 3x3 完全無島嶼)
       for (let y = 0; y <= H - 3; y++) {
           for (let x = 0; x <= W - 3; x++) {
               let hasIsland = false;
@@ -197,7 +195,6 @@
           }
       }
 
-      // 3. 建立島嶼物件
       let islands = [];
       let islandId = 1;
       for (let y = 0; y < H; y++) {
@@ -210,18 +207,15 @@
           }
       }
 
-      // 4. 尋找所有可能的橋樑路徑 (視線內無阻擋)
       let potentialBridges = [];
       for (let i = 0; i < islands.length; i++) {
           let island = islands[i];
-          // 向右找
           for (let x = island.x + 1; x < W; x++) {
               if (grid[island.y][x]) {
                   potentialBridges.push({ from: island.id, to: grid[island.y][x].id, type: 'h', minX: island.x, maxX: x, y: island.y, len: x - island.x });
                   break;
               }
           }
-          // 向下找
           for (let y = island.y + 1; y < H; y++) {
               if (grid[y][island.x]) {
                   potentialBridges.push({ from: island.id, to: grid[y][island.x].id, type: 'v', minY: island.y, maxY: y, x: island.x, len: y - island.y });
@@ -230,10 +224,8 @@
           }
       }
 
-      // 依長度排序，優先連接近的島嶼，減少長橋交叉，讓畫面更順眼
       potentialBridges.sort((a, b) => a.len - b.len + (Math.random() - 0.5));
 
-      // 5. Kruskal's 演算法建立連通圖 (避免任何交叉)
       let uf = new Map();
       islands.forEach(i => uf.set(i.id, i.id));
       function find(i) { if (uf.get(i) === i) return i; let root = find(uf.get(i)); uf.set(i, root); return root; }
@@ -264,7 +256,6 @@
           }
       }
 
-      // 增加額外的橋樑產生迴圈 (加入環狀路徑，讓解題變化更多)
       for (let i=0; i<rejectedBridges.length; i++) {
           let b = rejectedBridges[i];
           if (!doesIntersect(b) && Math.random() < 0.4) {
@@ -272,7 +263,6 @@
           }
       }
 
-      // 6. 分配橋樑數量 (1 或 2) 並計算島嶼需求數字
       let islandDegree = {};
       islands.forEach(i => islandDegree[i.id] = 0);
       
@@ -285,7 +275,6 @@
       islands = islands.filter(i => islandDegree[i.id] > 0);
       islands.forEach(i => i.req = islandDegree[i.id]);
 
-      // 7. 確保全圖單一連通 (保留最大連通塊，刪除因交叉限制而被孤立的碎塊)
       if (islands.length > 0) {
           let adj = {};
           islands.forEach(i => adj[i.id] = []);
@@ -380,6 +369,11 @@
       const [randomLevelData, setRandomLevelData] = useState(initialDataRef.current);
       const [bridges, setBridges] = useState(() => generateEmptyBridges(initialDataRef.current));
       
+      // 塗鴉軌跡狀態
+      const [strokes, setStrokes] = useState([]);
+      const [currentPath, setCurrentPath] = useState(null);
+      const [eraserPos, setEraserPos] = useState(null);
+
       const [history, setHistory] = useState([]);
       const [isWon, setIsWon] = useState(false);
       const [hideVictoryModal, setHideVictoryModal] = useState(false);
@@ -399,7 +393,13 @@
       const [tempWidth, setTempWidth] = useState(30);
       const [tempHeight, setTempHeight] = useState(30);
 
-      const [isDraftMode, setIsDraftMode] = useState(false);
+      // 互動模式 (0: 實線, 1: 草稿, 2: 繪圖)
+      const [interactionMode, setInteractionMode] = useState(0);
+      const [drawSubMode, setDrawSubMode] = useState('pen'); // 'pen' 或 'eraser'
+      
+      const modeIcons = ['🖋️', '✏️', '🖌️'];
+      const modeTitles = ['實線模式', '草稿模式', '繪圖作記號'];
+
       const [zoomModeIdx, setZoomModeIdx] = useState(0); 
       const [isClosingModal, setIsClosingModal] = useState(false);
       const [isGenerating, setIsGenerating] = useState(false);
@@ -424,6 +424,7 @@
       const isMultiplayer = engine !== 'none';
       const svgRef = useRef(null);
       const lastCursorSend = useRef(0);
+      const isDrawingRef = useRef(false);
 
       // === Refs ===
       const engineRef = useRef('none');
@@ -435,9 +436,9 @@
       const unsubRef = useRef(null);
       const zoomContainerRef = useRef(null);
       const lastPinchDist = useRef(null);
-      const stateRef = useRef({ bridges: [], levelId: 2, randomLevelData: null, showSolution: false, startTime: Date.now() });
+      const stateRef = useRef({ bridges: [], randomLevelData: null, showSolution: false, startTime: Date.now(), levelId: 2, strokes: [] });
 
-      // === 網格與畫布尺寸計算提前至此 ===
+      // === 網格與畫布尺寸計算 ===
       const cLevel = randomLevelData || { islands: [], description: "" };
       const islandsToRender = cLevel.islands || [];
       const maxGridX = islandsToRender.length > 0 ? Math.max.apply(Math, islandsToRender.map(i => i.x).concat([6])) : 6; 
@@ -450,7 +451,7 @@
       const svgH = (gridHeight - 1) * SCALE + PADDING * 2;
       const hasSolution = cLevel.solution && cLevel.solution.length > 0;
 
-      // 隨時同步自身的資料快取
+      // 隨時同步自身資料
       useEffect(function() {
         const me = playersList.find(p => p.id === myId);
         if (me) {
@@ -458,6 +459,13 @@
           myColorRef.current = me.color;
         }
       }, [playersList, myId]);
+
+      // 當切換到 Firebase 時，鎖定繪圖功能
+      useEffect(function() {
+        if (engine === 'firebase' && interactionMode >= 2) {
+            setInteractionMode(0);
+        }
+      }, [engine, interactionMode]);
 
       useEffect(function() {
         const initAuth = async function() {
@@ -477,8 +485,8 @@
       }, []);
 
       useEffect(function() {
-        stateRef.current = { bridges, randomLevelData, showSolution, startTime, levelId: currentLevelId };
-      }, [bridges, randomLevelData, showSolution, startTime, currentLevelId]);
+        stateRef.current = { bridges, randomLevelData, showSolution, startTime, levelId: currentLevelId, strokes };
+      }, [bridges, randomLevelData, showSolution, startTime, currentLevelId, strokes]);
 
       useEffect(function() {
         if (isWon || screen !== 'game') return;
@@ -495,13 +503,16 @@
 
         const handleTouchStart = (e) => { if (e.touches.length === 1) { touchStartY = e.touches[0].clientY; } };
         const handleTouchMove = (e) => {
+          // 繪圖模式下鎖死畫布原生滑動，防止干擾
+          if (interactionMode >= 2) return;
+          
           if (e.touches.length === 2) {
             e.preventDefault(); 
             const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
             if (lastPinchDist.current) {
               const delta = dist - lastPinchDist.current;
               setZoomLevel(prev => Math.min(Math.max(prev + delta * 0.005, 0.4), 3.5));
-              setZoomModeIdx(0); // 取消自動縮放狀態
+              setZoomModeIdx(0); 
             }
             lastPinchDist.current = dist;
           } else if (e.touches.length === 1 && touchStartY !== null) {
@@ -511,8 +522,9 @@
         };
         const handleTouchEnd = () => { lastPinchDist.current = null; touchStartY = null; };
         const handleWheel = (e) => { 
+            if (interactionMode >= 2) return;
             if (Math.abs(e.deltaY) > 10 && !isHeaderCollapsed) { setIsHeaderCollapsed(true); } 
-            if (e.ctrlKey) setZoomModeIdx(0); // 如果使用者用滾輪縮放，解除適應狀態
+            if (e.ctrlKey) setZoomModeIdx(0); 
         };
         
         el.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -528,7 +540,7 @@
           el.removeEventListener('touchcancel', handleTouchEnd);
           el.removeEventListener('wheel', handleWheel);
         };
-      }, [screen, isHeaderCollapsed]);
+      }, [screen, isHeaderCollapsed, interactionMode]);
 
       // 定期清理過期的水波紋動畫
       useEffect(function() {
@@ -542,7 +554,7 @@
 
       const showToast = (m) => { setToastMsg(m); setTimeout(() => setToastMsg(""), 4000); };
 
-      // === 游標與水波事件廣播 ===
+      // === 游標與水波事件廣播與繪圖處理 ===
       const getSvgCoords = (clientX, clientY) => {
         const svg = svgRef.current;
         if (!svg) return null;
@@ -554,7 +566,68 @@
         return pt.matrixTransform(ctm.inverse());
       };
 
+      // 橡皮擦碰撞偵測邏輯
+      const eraseAtPoint = (cx, cy) => {
+          const offsets = [[0,0], [15,0], [-15,0], [0,15], [0,-15], [10,10], [-10,-10], [10,-10], [-10,10]];
+          let hitIds = new Set();
+          for (let off of offsets) {
+              const els = document.elementsFromPoint(cx + off[0], cy + off[1]);
+              for (let el of els) {
+                  if (el.classList.contains('doodle-stroke')) {
+                      hitIds.add(el.getAttribute('data-stroke-id'));
+                  }
+              }
+          }
+          if (hitIds.size > 0) {
+              const newStrokes = stateRef.current.strokes.filter(s => !hitIds.has(s.id));
+              if (newStrokes.length !== stateRef.current.strokes.length) {
+                  syncState({ strokes: newStrokes });
+              }
+          }
+      };
+
+      const handlePointerDown = (e) => {
+        const pt = getSvgCoords(e.clientX, e.clientY);
+        if (!pt) return;
+
+        // 處理繪畫與橡皮擦模式
+        if (interactionMode === 2) {
+            e.target.setPointerCapture(e.pointerId);
+            if (drawSubMode === 'pen') {
+                isDrawingRef.current = true;
+                // 新增明確記錄 uid，方便後續動態綁定顏色
+                setCurrentPath({ id: Date.now() + '-' + myId, uid: myId, path: `M ${pt.x} ${pt.y}`, color: myColorRef.current });
+            } else if (drawSubMode === 'eraser') {
+                eraseAtPoint(e.clientX, e.clientY);
+            }
+            return;
+        }
+
+        if (engineRef.current !== 'peerjs' || !showOtherCursors) return;
+        const msg = { type: 'CLICK', uid: myId, x: pt.x, y: pt.y };
+        setRipples(prev => [...prev, { id: Date.now() + Math.random(), uid: myId, x: pt.x, y: pt.y, timestamp: Date.now() }]);
+        
+        if (isHostRef.current) {
+            connsRef.current.forEach(c => c.send(msg));
+        } else if (connRef.current) {
+            connRef.current.send(msg);
+        }
+      };
+
       const handlePointerMove = (e) => {
+        if (interactionMode === 2) {
+            const pt = getSvgCoords(e.clientX, e.clientY);
+            if (drawSubMode === 'eraser') {
+                if (pt) setEraserPos({ x: pt.x, y: pt.y });
+                if (e.buttons > 0 || e.pointerType === 'touch') {
+                    eraseAtPoint(e.clientX, e.clientY);
+                }
+            } else if (drawSubMode === 'pen' && isDrawingRef.current && currentPath) {
+                if (pt) setCurrentPath(prev => ({ ...prev, path: prev.path + ` L ${pt.x} ${pt.y}` }));
+            }
+            return;
+        }
+
         if (engineRef.current !== 'peerjs' || !showOtherCursors) return;
         if (Date.now() - lastCursorSend.current < 50) return; 
         lastCursorSend.current = Date.now();
@@ -569,21 +642,31 @@
         }
       };
 
-      const handlePointerDown = (e) => {
-        if (engineRef.current !== 'peerjs' || !showOtherCursors) return;
-        const pt = getSvgCoords(e.clientX, e.clientY);
-        if (pt) {
-            const msg = { type: 'CLICK', uid: myId, x: pt.x, y: pt.y };
-            
-            // 立即新增本地端的水波紋
-            setRipples(prev => [...prev, { id: Date.now() + Math.random(), uid: myId, x: pt.x, y: pt.y, timestamp: Date.now() }]);
-            
-            if (isHostRef.current) {
-                connsRef.current.forEach(c => c.send(msg));
-            } else if (connRef.current) {
-                connRef.current.send(msg);
+      const handlePointerUp = (e) => {
+        if (interactionMode === 2) {
+            if (drawSubMode === 'pen' && isDrawingRef.current) {
+                isDrawingRef.current = false;
+                if (currentPath) {
+                    const newStrokes = [...stateRef.current.strokes, currentPath];
+                    syncState({ strokes: newStrokes });
+                    setCurrentPath(null);
+                }
             }
         }
+      };
+
+      // 快速清空繪圖
+      const clearOwnStrokes = () => {
+          const newStrokes = stateRef.current.strokes.filter(s => !s.id.endsWith('-' + myId));
+          syncState({ strokes: newStrokes });
+          showToast("🗑️ 已清除你所有的塗鴉");
+      };
+
+      const clearAllStrokes = () => {
+          if (isHostRef.current) {
+              syncState({ strokes: [] });
+              showToast("🚨 房主已清空全場塗鴉");
+          }
       };
 
       // 幽靈玩家點名清除機制
@@ -611,6 +694,7 @@
         if (partial.randomLevelData !== undefined) setRandomLevelData(partial.randomLevelData);
         if (partial.startTime !== undefined) setStartTime(partial.startTime);
         if (partial.levelId !== undefined) setCurrentLevelId(partial.levelId);
+        if (partial.strokes !== undefined) setStrokes(partial.strokes);
         
         const updatedState = { ...stateRef.current, ...partial };
         stateRef.current = updatedState;
@@ -631,7 +715,7 @@
 
       // 橋樑點擊與防呆
       const handleBridgeClick = (bId) => {
-        if (isWon) return;
+        if (isWon || interactionMode >= 2) return;
         const cur = bridges || [];
         const target = cur.find(b => b.id === bId);
         if (!target) return;
@@ -674,13 +758,13 @@
             let newCount = b.count;
             let newDraftCount = b.draftCount || 0;
             
-            if (isDraftMode) {
+            if (interactionMode === 1) { // 草稿模式
                if (b.count === 1) {
                   newDraftCount = newDraftCount === 0 ? 1 : 0;
                } else if (b.count === 0) {
                   newDraftCount = (newDraftCount + 1) % 3;
                }
-            } else {
+            } else { // 實線模式
                if (newDraftCount > 0) {
                   newCount = b.count + newDraftCount;
                   newDraftCount = 0;
@@ -695,10 +779,11 @@
         syncState({ bridges: nextBridges });
       };
 
-      const toggleDraftMode = () => {
-        const nextMode = !isDraftMode;
-        setIsDraftMode(nextMode);
-        showToast(nextMode ? "✏️ 已切換成草稿模式" : "🖋️ 已切換成實線模式");
+      const toggleInteractionMode = () => {
+        const maxModes = engineRef.current === 'firebase' ? 2 : 3;
+        const nextMode = (interactionMode + 1) % maxModes;
+        setInteractionMode(nextMode);
+        showToast(`${modeIcons[nextMode]} 已切換為 ${modeTitles[nextMode]}`);
       };
 
       const handleUndo = () => {
@@ -710,7 +795,7 @@
 
       const handleReset = () => {
         const empty = generateEmptyBridges(randomLevelData);
-        syncState({ bridges: empty, showSolution: false, startTime: Date.now() });
+        syncState({ bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
         if (engineRef.current === 'none') setHistory([]);
         setIsWon(false); setElapsedTime(0);
       };
@@ -727,7 +812,7 @@
             }
             const newRandomData = generateRandomHashi(targetLevelDef);
             const empty = generateEmptyBridges(newRandomData);
-            syncState({ levelId: currentLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+            syncState({ levelId: currentLevelId, randomLevelData: newRandomData, bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
             setIsWon(false); setHistory([]); setElapsedTime(0); setHideVictoryModal(false);
             setIsGenerating(false);
         }, 100);
@@ -751,7 +836,7 @@
             }
             const newRandomData = generateRandomHashi(targetLevelDef);
             const empty = generateEmptyBridges(newRandomData);
-            syncState({ levelId: newLevelId, randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+            syncState({ levelId: newLevelId, randomLevelData: newRandomData, bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
             setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
             setIsGenerating(false);
         }, 100);
@@ -771,7 +856,7 @@
               const newRandomData = generateRandomHashi(customLevelDef);
               const empty = generateEmptyBridges(newRandomData);
               
-              syncState({ levelId: 'custom', randomLevelData: newRandomData, bridges: empty, showSolution: false, startTime: Date.now() });
+              syncState({ levelId: 'custom', randomLevelData: newRandomData, bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
               setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
               setIsGenerating(false);
           }, 100);
@@ -802,7 +887,7 @@
         setIsHost(false); isHostRef.current = false;
         setRoomId(""); setPlayersList([]);
         roomRef.current = null; connsRef.current = []; connRef.current = null;
-        setCursors({}); setRipples([]);
+        setCursors({}); setRipples([]); setInteractionMode(0);
       };
 
       const startSinglePlayer = () => {
@@ -882,7 +967,6 @@
             const serverPlayers = data.players || [];
             setPlayersList(serverPlayers);
 
-            // === 幽靈玩家清除機制：若我是訪客被移除了，代表房主正在點名，立刻回加自己以證明還活著 ===
             if (!isHostRef.current && !serverPlayers.find(p => p.id === myId)) {
                 const updatedPList = [...serverPlayers, { id: myId, name: myNameRef.current, isHost: false, color: myColorRef.current }];
                 updateDoc(rDoc, { players: updatedPList }).catch(e => {});
@@ -895,6 +979,7 @@
               if (gs.levelId !== undefined) setCurrentLevelId(gs.levelId);
               if (gs.showSolution !== undefined) setShowSolution(gs.showSolution);
               if (gs.startTime) setStartTime(gs.startTime);
+              if (gs.strokes !== undefined) setStrokes(gs.strokes);
               stateRef.current = gs;
             }
           }, function(err) { showToast("⚠️ 網路波動，同步中..."); });
@@ -975,7 +1060,6 @@
                   } else if (m.type === 'CLICK') {
                       setRipples(prev => [...prev, { id: Date.now() + Math.random(), uid: m.uid, x: m.x, y: m.y, timestamp: Date.now() }]);
                   } else if (m.type === 'REQ_REJOIN') {
-                      // 收到房主點名，回傳連線證明
                       connRef.current.send({ type: 'JOIN', pName: myNameRef.current, uid: myId, color: myColorRef.current });
                   }
                 });
@@ -1071,7 +1155,12 @@
       }, [bridges, randomLevelData, islandCurrentCounts, isWon]);
 
       const handleSaveCode = () => {
-        const saveData = { lid: currentLevelId, r: randomLevelData, b: (bridges || []).filter(br => br.count > 0 || (br.draftCount || 0) > 0).map(br => ({ i: br.id, c: br.count, d: br.draftCount || 0, o: br.owner })) };
+        const saveData = { 
+            lid: currentLevelId, 
+            r: randomLevelData, 
+            b: (bridges || []).filter(br => br.count > 0 || (br.draftCount || 0) > 0).map(br => ({ i: br.id, c: br.count, d: br.draftCount || 0, o: br.owner })),
+            s: strokes
+        };
         const code = btoa(encodeURIComponent(JSON.stringify(saveData)));
         setSaveCode(code);
         const textArea = document.createElement("textarea"); textArea.value = code; document.body.appendChild(textArea); textArea.select();
@@ -1104,7 +1193,7 @@
           
           data.b.forEach(savedBr => { let tb = emptyBridges.find(eb => eb.id === savedBr.i); if (tb) { tb.count = savedBr.c || 0; tb.draftCount = savedBr.d || 0; tb.owner = savedBr.o; } });
           setCurrentLevelId(data.lid);
-          syncState({ randomLevelData: newRandom, bridges: emptyBridges, showSolution: false });
+          syncState({ randomLevelData: newRandom, bridges: emptyBridges, strokes: data.s || [], showSolution: false });
           setIsWon(false); setShowSaveModal(false); showToast("✅ 讀取成功！");
         } catch(e) { showToast("⚠️ 讀檔失敗！"); }
       };
@@ -1159,7 +1248,7 @@
                  </div>
               </div>
             </div>
-            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.3)</div>
+            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.4)</div>
           </div>
         );
       }
@@ -1327,13 +1416,13 @@
             )}
 
             {!isHeaderCollapsed && (
-              <div className="h-8 shrink-0 flex items-center justify-center bg-slate-800 text-white border-b-4 border-slate-800 z-10 font-bold tracking-wide">
+              <div className="h-8 shrink-0 flex items-center justify-center bg-slate-800 text-white border-b-4 border-slate-800 relative z-30 font-bold tracking-wide">
                 <span className="text-xs md:text-sm hidden md:inline">支援滑鼠拖曳、滾輪縮放；向下滑動畫布可自動收合選單。</span>
                 <span className="text-xs md:text-sm md:hidden">點擊島嶼間空白處架橋。支援雙指縮放與平移。</span>
               </div>
             )}
 
-            <div className="relative flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
+            <div className="relative z-10 flex-1 flex flex-col min-h-0 bg-[#fffaf0]">
               
               {isGenerating && (
                 <div className="absolute inset-0 z-[40] flex items-center justify-center pointer-events-none">
@@ -1343,8 +1432,34 @@
                 </div>
               )}
 
-              <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto">
-                <button onClick={toggleDraftMode} title={isDraftMode ? "切換為實線模式" : "切換為草稿模式"} className={`w-10 h-10 md:w-12 md:h-12 border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center ${isDraftMode ? 'bg-[#ffcc00] text-slate-800' : 'bg-white text-slate-400 hover:text-slate-800 hover:bg-slate-100'}`}>✏️</button>
+              <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col gap-2 md:gap-3 z-20 pointer-events-auto items-end">
+                <div className="flex items-center">
+                   {interactionMode === 2 && (
+                       <div className="flex items-center gap-2 animate-fadeIn bg-white/80 p-1.5 rounded-full border-2 border-slate-300 backdrop-blur-sm mr-2 shadow-[2px_2px_0px_rgba(30,41,59,1)]">
+                           <button 
+                               onClick={() => setDrawSubMode('pen')} 
+                               className={`w-9 h-9 md:w-10 md:h-10 border-2 border-slate-800 rounded-full font-black text-lg transition-all flex items-center justify-center shadow-sm ${drawSubMode === 'pen' ? 'bg-blue-500 text-white scale-110 shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                               title="畫筆 (可直接在畫布上任意做記號)"
+                           >🖌️</button>
+                           <button 
+                               onClick={() => setDrawSubMode('eraser')} 
+                               onDoubleClick={clearOwnStrokes} 
+                               className={`w-9 h-9 md:w-10 md:h-10 border-2 border-slate-800 rounded-full font-black text-lg transition-all flex items-center justify-center shadow-sm ${drawSubMode === 'eraser' ? 'bg-pink-400 text-white scale-110 shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                               title="橡皮擦 (連點兩下清空自己的所有塗鴉)"
+                           >🧽</button>
+                           {isHostRef.current && (
+                               <button 
+                                   onClick={clearAllStrokes} 
+                                   className={`w-9 h-9 md:w-10 md:h-10 bg-red-500 hover:bg-red-600 text-white border-2 border-slate-800 rounded-full font-black text-lg transition-all flex items-center justify-center shadow-sm ml-1`}
+                                   title="房主特權：一鍵清空所有人的塗鴉"
+                               >🚨</button>
+                           )}
+                       </div>
+                   )}
+                   <button onClick={toggleInteractionMode} title={`切換模式 (目前: ${modeTitles[interactionMode]})`} className={`w-10 h-10 md:w-12 md:h-12 border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center ${interactionMode > 0 ? 'bg-[#ffcc00] text-slate-800' : 'bg-white text-slate-400 hover:text-slate-800 hover:bg-slate-100'}`}>
+                     {modeIcons[interactionMode]}
+                   </button>
+                </div>
                 <button onClick={handleZoomIn} title="放大" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-xl md:text-2xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">＋</button>
                 <button onClick={handleZoomOut} title="縮小" className="w-10 h-10 md:w-12 md:h-12 bg-white border-2 border-slate-800 rounded-full font-black text-2xl md:text-3xl shadow-[3px_3px_0px_rgba(30,41,59,1)] hover:bg-slate-100 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-slate-800">－</button>
                 <button onClick={handleCycleZoom} title="循環切換縮放模式" className="w-10 h-10 md:w-12 md:h-12 bg-slate-800 border-2 border-slate-800 rounded-full font-black text-xs md:text-sm shadow-[3px_3px_0px_rgba(0,0,0,0.3)] hover:bg-slate-700 active:translate-y-1 active:shadow-none transition-all flex items-center justify-center text-white">
@@ -1358,9 +1473,16 @@
                     ref={svgRef}
                     onPointerMove={handlePointerMove}
                     onPointerDown={handlePointerDown}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={(e) => { handlePointerUp(e); setEraserPos(null); }}
+                    onPointerCancel={handlePointerUp}
                     viewBox={`0 0 ${svgW} ${svgH}`} 
-                    className="bg-transparent transition-transform duration-100 ease-out origin-center" 
-                    style={{ width: `${svgW * zoomLevel}px`, height: `${svgH * zoomLevel}px`, touchAction: 'manipulation' }}>
+                    className="bg-transparent transition-transform duration-100 ease-out origin-center select-none" 
+                    style={{ 
+                        width: `${svgW * zoomLevel}px`, 
+                        height: `${svgH * zoomLevel}px`, 
+                        touchAction: (interactionMode >= 2) ? 'none' : 'manipulation' 
+                    }}>
                     <defs>
                       <pattern id="grid" width={SCALE} height={SCALE} patternUnits="userSpaceOnUse">
                         <path d={`M ${SCALE} 0 L 0 0 0 ${SCALE}`} fill="none" stroke="#e2e8f0" strokeWidth="1"/>
@@ -1368,6 +1490,7 @@
                     </defs>
                     <rect width="100%" height="100%" fill="url(#grid)" transform={`translate(${PADDING}, ${PADDING})`} className="opacity-50 pointer-events-none" />
 
+                    {/* 解答線 */}
                     {showSolution && cLevel.solution && cLevel.solution.map((sol, idx) => {
                         const islandsMap = {}; islandsToRender.forEach(i => { islandsMap[i.id] = i; });
                         const f = islandsMap[sol.from], t = islandsMap[sol.to];
@@ -1396,6 +1519,53 @@
                         return null;
                     })}
 
+                    {/* 塗鴉筆跡 */}
+                    {strokes.map(s => {
+                        let strokeColor = s.color;
+                        let strokeOpacity = 1;
+                        // 支援舊版存檔與新版架構
+                        const strokeUid = s.uid || s.id.split('-')[1];
+                        
+                        if (isMultiplayer && strokeUid) {
+                            const ownerObj = playersList.find(p => p.id === strokeUid);
+                            if (ownerObj) strokeColor = ownerObj.color;
+                            if (strokeUid !== myId) strokeOpacity = 0.5;
+                        }
+
+                        // 判斷是否為自己的筆跡
+                        const isOwnStroke = strokeUid === myId;
+
+                        return (
+                            <path
+                                key={s.id}
+                                d={s.path}
+                                fill="none"
+                                stroke={strokeColor}
+                                strokeOpacity={strokeOpacity}
+                                strokeWidth="8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="doodle-stroke"
+                                data-stroke-id={s.id}
+                                // 只有自己的筆跡在橡皮擦模式下才會有實體碰撞，其他人的筆跡直接物理穿透
+                                style={{ pointerEvents: (interactionMode === 2 && drawSubMode === 'eraser' && isOwnStroke) ? 'stroke' : 'none' }}
+                            />
+                        );
+                    })}
+                    {currentPath && (
+                        <path
+                            d={currentPath.path}
+                            fill="none"
+                            stroke={myColorRef.current}
+                            strokeOpacity={1}
+                            strokeWidth="8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="pointer-events-none"
+                        />
+                    )}
+
+                    {/* 橋樑繪製 */}
                     {bridges.map(b => {
                       const totalLines = b.count + (b.draftCount || 0);
                       const islMap = {}; islandsToRender.forEach(i => { islMap[i.id] = i; });
@@ -1412,12 +1582,16 @@
                           if (b.owner !== myId) lineOpacity = 0.5; 
                       }
 
+                      // 在繪圖/橡皮擦模式下，關閉橋樑的滑鼠感應與黃色 Hover 效果
+                      const bridgeGroupClass = interactionMode >= 2 ? "pointer-events-none" : "cursor-pointer group";
+                      const bridgeRectClass = interactionMode >= 2 ? "fill-transparent" : "fill-transparent group-hover:fill-yellow-300/30 transition-colors";
+
                       if (totalLines === 0) return (
-                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className="cursor-pointer group">
+                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className={bridgeGroupClass}>
                            {b.type === 'h' ? (
-                              <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                              <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className={bridgeRectClass} />
                             ) : (
-                              <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                              <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
                             )}
                         </g>
                       );
@@ -1439,11 +1613,11 @@
                       }
 
                       return (
-                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className="cursor-pointer group">
+                        <g key={b.id} onClick={() => handleBridgeClick(b.id)} className={bridgeGroupClass}>
                           {b.type === 'h' ? (
-                            <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                            <rect x={Math.min(x1, x2) + ISLAND_RADIUS} y={y1 - 20} width={Math.abs(x1 - x2) - ISLAND_RADIUS * 2} height={40} className={bridgeRectClass} />
                           ) : (
-                            <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className="fill-transparent group-hover:fill-yellow-300/30 transition-colors" />
+                            <rect x={x1 - 20} y={Math.min(y1, y2) + ISLAND_RADIUS} width={40} height={Math.abs(y1 - y2) - ISLAND_RADIUS * 2} className={bridgeRectClass} />
                           )}
                           {linesToDraw.map((lineObj, lIdx) => {
                               const isDraft = lineObj.isDraft;
@@ -1470,10 +1644,15 @@
                         <g key={`island-${island.id}`}>
                           <circle cx={cx + 3} cy={cy + 3} r={ISLAND_RADIUS} fill="rgba(30,41,59,0.2)" />
                           <circle cx={cx} cy={cy} r={ISLAND_RADIUS} fill={bgColor} stroke={strokeColor} strokeWidth="4" className="transition-colors duration-300" />
-                          <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none transition-colors duration-300" fill={textColor}>{island.req}</text>
+                          <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="central" className="text-xl font-black font-sans pointer-events-none select-none transition-colors duration-300" fill={textColor}>{island.req}</text>
                         </g>
                       );
                     })}
+
+                    {/* 橡皮擦游標範圍指示器 */}
+                    {interactionMode === 2 && drawSubMode === 'eraser' && eraserPos && (
+                        <circle cx={eraserPos.x} cy={eraserPos.y} r="15" fill={myColorRef.current} fillOpacity="0.4" stroke={myColorRef.current} strokeWidth="2" className="pointer-events-none" />
+                    )}
 
                     {showOtherCursors && engineRef.current === 'peerjs' && Object.entries(cursors).map(entry => {
                         const uid = entry[0]; const pos = entry[1];
