@@ -175,6 +175,27 @@
         return COLORS[Math.floor(Math.random() * COLORS.length)];
     };
 
+    function formatTime(secs) {
+      const m = String(Math.floor(secs / 60)).padStart(2, '0');
+      const s = String(secs % 60).padStart(2, '0');
+      return m + ":" + s;
+    }
+
+    // 獨立計時器元件，避免每秒觸發整個畫布的超級大重繪 (解決行動端 OOM 閃退回首頁問題)
+    function GameTimer({ startTime, endTime, isRunning }) {
+        const [now, setNow] = useState(Date.now());
+        useEffect(() => {
+            if (!isRunning) return;
+            setNow(Date.now());
+            const t = setInterval(() => setNow(Date.now()), 1000);
+            return () => clearInterval(t);
+        }, [isRunning, startTime]);
+        
+        const timeToUse = endTime ? endTime : now;
+        const secs = Math.max(0, Math.floor((timeToUse - startTime) / 1000));
+        return <span>⏱ {formatTime(secs)}</span>;
+    }
+
     // ==========================================
     // 全新高密度智慧演算法 (網格掃描 + Kruskal生成樹)
     // ==========================================
@@ -378,12 +399,6 @@
       return pb;
     }
 
-    function formatTime(secs) {
-      const m = String(Math.floor(secs / 60)).padStart(2, '0');
-      const s = String(secs % 60).padStart(2, '0');
-      return m + ":" + s;
-    }
-
     // ==========================================
     // React 主程式
     // ==========================================
@@ -420,8 +435,10 @@
       const [hideVictoryModal, setHideVictoryModal] = useState(false);
       const [toastMsg, setToastMsg] = useState("");
       
+      // 時間狀態優化
       const [startTime, setStartTime] = useState(Date.now());
-      const [elapsedTime, setElapsedTime] = useState(0);
+      const [endTime, setEndTime] = useState(null);
+
       const [zoomLevel, setZoomLevel] = useState(1);
       const [showSolution, setShowSolution] = useState(false);
       const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
@@ -537,12 +554,6 @@
       useEffect(function() {
         stateRef.current = { bridges, randomLevelData, showSolution, startTime, levelId: currentLevelId, strokes };
       }, [bridges, randomLevelData, showSolution, startTime, currentLevelId, strokes]);
-
-      useEffect(function() {
-        if (isWon || screen !== 'game') return;
-        const t = setInterval(() => setElapsedTime(Math.floor((Date.now() - startTime) / 1000)), 1000);
-        return () => clearInterval(t);
-      }, [startTime, isWon, screen]);
 
       // === 畫布縮放與面板自動收合 ===
       useEffect(function() {
@@ -919,7 +930,7 @@
         const empty = generateEmptyBridges(randomLevelData);
         syncState({ bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
         if (engineRef.current === 'none') setHistory([]);
-        setIsWon(false); setElapsedTime(0);
+        setIsWon(false); setEndTime(null);
       };
 
       const handleRegenerateRandom = () => {
@@ -935,7 +946,7 @@
             const newRandomData = generateRandomHashi(targetLevelDef);
             const empty = generateEmptyBridges(newRandomData);
             syncState({ levelId: currentLevelId, randomLevelData: newRandomData, bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
-            setIsWon(false); setHistory([]); setElapsedTime(0); setHideVictoryModal(false);
+            setIsWon(false); setHistory([]); setEndTime(null); setHideVictoryModal(false);
             setIsGenerating(false);
         }, 100);
       };
@@ -959,7 +970,7 @@
             const newRandomData = generateRandomHashi(targetLevelDef);
             const empty = generateEmptyBridges(newRandomData);
             syncState({ levelId: newLevelId, randomLevelData: newRandomData, bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
-            setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
+            setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setEndTime(null);
             setIsGenerating(false);
         }, 100);
       };
@@ -979,7 +990,7 @@
               const empty = generateEmptyBridges(newRandomData);
               
               syncState({ levelId: 'custom', randomLevelData: newRandomData, bridges: empty, strokes: [], showSolution: false, startTime: Date.now() });
-              setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setElapsedTime(0);
+              setIsWon(false); setHistory([]); setZoomLevel(1); setZoomModeIdx(0); setEndTime(null);
               setIsGenerating(false);
           }, 100);
       };
@@ -1200,7 +1211,7 @@
             }
             if (peerRef.current) peerRef.current.destroy();
         }
-        switchToOffline(); setScreen('home'); setIsWon(false); setElapsedTime(0); setHistory([]);
+        switchToOffline(); setScreen('home'); setIsWon(false); setEndTime(null); setHistory([]);
       };
 
       const handlePlayerColorChange = (playerId, newColor) => {
@@ -1231,13 +1242,19 @@
 
       useEffect(function() {
         const islands = (randomLevelData && randomLevelData.islands) ? randomLevelData.islands : [];
-        if (islands.length === 0) { if (isWon) setIsWon(false); return; }
+        if (islands.length === 0) { 
+            if (isWon) { setIsWon(false); setEndTime(null); } 
+            return; 
+        }
         
         let allCountsMatch = true;
         for (let i=0; i<islands.length; i++) { 
            if (islandCurrentCounts[islands[i].id].real !== islands[i].req) { allCountsMatch = false; break; } 
         }
-        if (!allCountsMatch) { if (isWon) setIsWon(false); return; }
+        if (!allCountsMatch) { 
+            if (isWon) { setIsWon(false); setEndTime(null); } 
+            return; 
+        }
         
         const adjList = {}; islands.forEach(i => { adjList[i.id] = []; });
         (bridges || []).forEach(b => { 
@@ -1253,8 +1270,15 @@
             adjList[curr].forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } });
           }
         }
-        if (visited.size === islands.length && islands.length > 0) { if (!isWon) { setIsWon(true); setHideVictoryModal(false); } } 
-        else { setIsWon(false); }
+        if (visited.size === islands.length && islands.length > 0) { 
+            if (!isWon) { 
+                setIsWon(true); 
+                setEndTime(Date.now());
+                setHideVictoryModal(false); 
+            } 
+        } else { 
+            if (isWon) { setIsWon(false); setEndTime(null); } 
+        }
       }, [bridges, randomLevelData, islandCurrentCounts, isWon]);
 
       const handleSaveCode = () => {
@@ -1351,7 +1375,7 @@
                  </div>
               </div>
             </div>
-            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.5)</div>
+            <div className="shrink-0 pb-4 text-slate-800 font-black text-sm opacity-60 tracking-wider z-10">Copyright © 2026 葉大帥. All rights reserved. (v1.5.1)</div>
           </div>
         );
       }
@@ -1412,7 +1436,9 @@
                <div className="flex items-center justify-between gap-1 w-full">
                   <div className="flex items-center gap-2 flex-wrap">
                      <h1 className="font-black tracking-tight uppercase text-lg md:text-2xl text-[#2d2a26] flex items-center gap-1">🌉<span className="hidden sm:inline">數橋</span></h1>
-                     <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 py-1 rounded-md font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-xs md:text-sm whitespace-nowrap">⏱ {formatTime(elapsedTime)}</div>
+                     <div className="flex items-center gap-1 bg-[#2d2a26] text-white px-2 py-1 rounded-md font-mono font-bold shadow-[2px_2px_0px_rgba(0,0,0,0.4)] text-xs md:text-sm whitespace-nowrap">
+                        <GameTimer startTime={startTime} endTime={endTime} isRunning={!isWon && screen === 'game'} />
+                     </div>
                      {isMultiplayer && ( <span className="bg-emerald-400 text-slate-900 px-2 py-1 rounded-md border-2 border-slate-800 font-black text-xs md:text-sm shadow-[2px_2px_0px_rgba(30,41,59,1)] flex items-center gap-1 whitespace-nowrap">{isHostRef.current ? '👑 主機' : '👤 玩家'} | 代碼: {roomId} {engineRef.current === 'firebase' && '☁️'}</span> )}
                   </div>
                   <button onClick={() => setIsHeaderCollapsed(!isHeaderCollapsed)} className="flex px-2 md:px-3 py-1 bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-md font-bold text-xs md:text-sm shadow-[2px_2px_0px_rgba(0,0,0,0.3)] hover:bg-slate-800 items-center gap-1 whitespace-nowrap">{isHeaderCollapsed ? '🔽 展開規則' : '🔼 縮小面板'}</button>
@@ -1894,7 +1920,7 @@
                     <div className="text-5xl md:text-6xl mb-3">💥🏆</div>
                     <h2 className="text-2xl md:text-3xl font-black text-[#2d2a26] mb-2 uppercase tracking-wide">PERFECT!</h2>
                     <p className="text-slate-600 mb-1 text-sm md:text-base font-bold">所有的島嶼都成功連結了！</p>
-                    <p className="text-blue-600 mb-6 text-sm md:text-base font-bold border-b-[3px] border-dashed border-slate-300 pb-4">完成時間：{formatTime(elapsedTime)}</p>
+                    <p className="text-blue-600 mb-6 text-sm md:text-base font-bold border-b-[3px] border-dashed border-slate-300 pb-4">完成時間：{endTime ? formatTime(Math.floor((endTime - startTime) / 1000)) : "00:00"}</p>
                     <div className="flex justify-center gap-3">
                       <button onClick={triggerRegenerate} className="px-5 py-3 bg-[#ffcc00] text-[#2d2a26] border-[4px] border-[#2d2a26] font-black rounded-xl shadow-[4px_4px_0px_#2d2a26] hover:translate-y-[2px] transition-all text-base md:text-lg">再來一局 ➔</button>
                     </div>
